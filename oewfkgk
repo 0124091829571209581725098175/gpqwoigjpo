@@ -349,6 +349,7 @@ local function GetIconData(Key)
     return nil
 end
 FetchIcons()
+local Tween
 local Update_Health_Bar = LPH_NO_VIRTUALIZE(function(PlayerData, New_Health, Difference)
     if math.abs(Difference) <= 1 then
         PlayerData.Fake_Health = New_Health
@@ -396,7 +397,6 @@ local Update_Tool_Text = LPH_NO_VIRTUALIZE(function(PlayerData, ToolInstance)
     end
     TextDrawing.Text = GetToolText(ToolInstance)
 end)
-local Tween
 local Heartbeats = {}
 local UpdateQueued = false
 local SessionConnections = {}
