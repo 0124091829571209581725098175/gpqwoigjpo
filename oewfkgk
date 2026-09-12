@@ -1064,10 +1064,10 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData)
         local Armor = PlayerData.Fake_Armor
         if not ESP.Settings.Bars.Armor.Hide_If_Empty or Armor ~= 0 then
             local Y_Size = Height + 2
-            Drawings.ArmorBarOutline.Position = MainPos - ESP.Settings.Bars.Armor.Offset
+            Drawings.ArmorBarOutline.Position = MainPos + Vector2.new(Width + ESP.Settings.Bars.Armor.Offset.X - 4, -ESP.Settings.Bars.Armor.Offset.Y)
             Drawings.ArmorBarOutline.Size = Vector2.new(4, Y_Size)
             local Armor_Size = (math.clamp(Armor / 130, 0, 1)) * (Y_Size - 2)
-            local Bar_Position = MainPos + Vector2.new(-ESP.Settings.Bars.Armor.Offset.X + 1, Y_Size - Armor_Size - 2)
+            local Bar_Position = MainPos + Vector2.new(Width + ESP.Settings.Bars.Armor.Offset.X - 3, Y_Size - Armor_Size - 2)
             local Bar_Size = Vector2.new(2, Armor_Size)
             Drawings.ArmorBar.Position = Bar_Position
             Drawings.ArmorBar.Size = Bar_Size
@@ -1108,13 +1108,11 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData)
     if ESP.Settings.HealthText.Enabled and Drawings.HealthText then
         Drawings.HealthText.Position = MainPos - (Armor_Ignored and ESP.Settings.HealthText.NormalOffset or ESP.Settings.HealthText.Offset) - Vector2.new(Drawings.HealthText.TextBounds.X, 0)
     end
-    if ESP.Settings.ToolText.Enabled and Drawings.ToolText then
-        local Y = Height + 2
-        if ESP.Settings.Distance.Enabled then
-            Y = Height + 16
-        end
-        Drawings.ToolText.Position = MainPos + Vector2.new(Width / 2, Y)
+    local BelowY = Height + 4
+    if ESP.Settings.Distance.Enabled then
+        BelowY = BelowY + 12
     end
+    local IconShown = false
     if ESP.Settings.WeaponIcon.Enabled then
         local Icon = Drawings.WeaponIcon
         if Icon then
@@ -1130,23 +1128,29 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData)
                 end
             end
             if PlayerData.IconKey ~= nil then
-                local IconSize = math.clamp(math.floor(Height * 0.09), 10, 20)
-                local BelowY = Height + 4
-                if ESP.Settings.Distance.Enabled then
-                    BelowY = BelowY + 12
-                end
-                if ESP.Settings.ToolText.Enabled then
-                    BelowY = BelowY + 12
-                end
-                Icon.Size = Vector2.new(IconSize, IconSize)
-                Icon.Position = MainPos + Vector2.new(Width / 2 - IconSize / 2, BelowY)
+                local IconHeight = math.clamp(math.floor(Height * 0.1), 12, 22)
+                local IconWidth = IconHeight * 2
+                Icon.Size = Vector2.new(IconWidth, IconHeight)
+                Icon.Position = MainPos + Vector2.new(Width / 2 - IconWidth / 2, BelowY)
                 Icon.Visible = true
+                IconShown = true
+                BelowY = BelowY + IconHeight + 4
             else
                 Icon.Visible = false
             end
         end
     elseif Drawings.WeaponIcon then
         Drawings.WeaponIcon.Visible = false
+    end
+    if ESP.Settings.ToolText.Enabled and Drawings.ToolText then
+        local Y = BelowY
+        if not IconShown then
+            Y = Height + 2
+            if ESP.Settings.Distance.Enabled then
+                Y = Height + 16
+            end
+        end
+        Drawings.ToolText.Position = MainPos + Vector2.new(Width / 2, Y)
     end
 end)
 local Update_ESP = LPH_NO_VIRTUALIZE(function()
@@ -1161,6 +1165,7 @@ SessionConnections[#SessionConnections + 1] = RunService.Heartbeat:Connect(funct
             local Humanoid = Character:FindFirstChildOfClass("Humanoid")
             if Humanoid then
                 if not Data[Player] then
+                    local BuiltOk = pcall(function()
                     local ArmorValue = GetArmorValue(Character)
                     local PlayerData = {
                         Player = Player,
@@ -1203,6 +1208,10 @@ SessionConnections[#SessionConnections + 1] = RunService.Heartbeat:Connect(funct
                         FadeIn(PlayerData)
                     end)
                     FadeIn(PlayerData)
+                    end)
+                    if not BuiltOk then
+                        Data[Player] = nil
+                    end
                 end
             end
         end
@@ -1259,6 +1268,7 @@ SessionConnections[#SessionConnections + 1] = Players.PlayerRemoving:Connect(fun
 end)
 function ESP:Refresh()
     for Player, PlayerData in pairs(Data) do
+        pcall(function()
         local WasRendering = PlayerData.Rendering
         local OldDrawings = PlayerData.Drawings
         local OldChams = PlayerData.Chams
@@ -1294,6 +1304,7 @@ function ESP:Refresh()
         if OldHighlight then
             OldHighlight:Destroy()
         end
+        end)
     end
 end
 function ESP:Update_ESP_Color()
