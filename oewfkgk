@@ -8,6 +8,11 @@ do
     function LPH_NO_VIRTUALIZE(...)
         return ...
     end
+    local OldCleanup = ESP._Cleanup
+    ESP._Cleanup = nil
+    if OldCleanup then
+        pcall(OldCleanup)
+    end
 end
 
 local Players = game:GetService("Players")
@@ -111,6 +116,9 @@ ESP.Settings = {
     ToolText = {
         Enabled = false,
         Color = Color3.fromRGB(255,255,255),
+    },
+    WeaponIcon = {
+        Enabled = false,
     },
     HealthText = {
         Enabled = false,
@@ -271,6 +279,73 @@ local function HidePlayerTags(PlayerData)
         Humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
     end
 end
+local IconsURL = "https://raw.githubusercontent.com/0124091829571209581725098175/23023095823059230523/refs/heads/main/32980507239805723"
+local IconTable = nil
+local IconCache = {}
+local function IconKey(ToolName)
+    if not ToolName then
+        return nil
+    end
+    local Key = string.lower(tostring(ToolName))
+    Key = string.gsub(Key, "[%[%]]", "")
+    Key = string.gsub(Key, "-", "")
+    Key = string.gsub(Key, "%s+", "")
+    if Key == "rpg" then
+        Key = "rpg_icon"
+    end
+    if Key == "grenade" then
+        Key = "grenade_icon"
+    end
+    if string.match(Key, "^[a-z0-9_]+$") then
+        return Key
+    end
+    return nil
+end
+local function FetchIcons()
+    if IconTable ~= nil then
+        return
+    end
+    task.spawn(function()
+        if game.HttpGet then
+            local Ok, Raw = pcall(function() return game:HttpGet(IconsURL) end)
+            if Ok and type(Raw) == "string" and #Raw > 100 then
+                local Loader = loadstring or load
+                if Loader ~= nil then
+                    local Ok2, Fn = pcall(Loader, Raw .. "\nreturn images")
+                    if Ok2 and Fn then
+                        local Ok3, Table = pcall(Fn)
+                        if Ok3 and type(Table) == "table" then
+                            IconTable = Table
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
+local function GetIconData(Key)
+    if not Key then
+        return nil
+    end
+    if IconCache[Key] ~= nil then
+        return IconCache[Key]
+    end
+    if IconTable == nil then
+        FetchIcons()
+        return nil
+    end
+    local Entry = IconTable[Key]
+    if type(Entry) ~= "string" or #Entry < 100 then
+        return nil
+    end
+    local Ok, Decoded = pcall(base64_decode, Entry)
+    if Ok and type(Decoded) == "string" and #Decoded > 0 then
+        IconCache[Key] = Decoded
+        return Decoded
+    end
+    return nil
+end
+FetchIcons()
 local Update_Health_Bar = LPH_NO_VIRTUALIZE(function(PlayerData, New_Health, Difference)
     if math.abs(Difference) <= 1 then
         PlayerData.Fake_Health = New_Health
@@ -278,7 +353,7 @@ local Update_Health_Bar = LPH_NO_VIRTUALIZE(function(PlayerData, New_Health, Dif
     end
     Tween(PlayerData, {
         Fake_Health = New_Health
-    }, "Sine", Out, 0.15)
+    }, "Sine", nil, 0.15)
 end)
 local Update_Armor_Bar = LPH_NO_VIRTUALIZE(function(PlayerData, New_Armor, Difference)
     local Bar = PlayerData.Drawings.ArmorBar
@@ -321,6 +396,7 @@ end)
 local Tween
 local Heartbeats = {}
 local UpdateQueued = false
+local SessionConnections = {}
 local Active_Tweens = {
     Color = {},
     Color3 = {},
@@ -364,7 +440,7 @@ do
                         Alpha = math.clamp(Alpha, 0, 1)
                         EasedAlpha = Alpha < 0.5 and 0.5 * math.sin(Alpha * 355 / 113) or 0.5 + 0.5 * (1 - math.cos((Alpha - 0.5) * 355 / 113))
                     end
-                    Object[Property] = Color3.fromRGB["Lerp"](StartValue, TargetValue, EasedAlpha)
+                    Object[Property] = StartValue:Lerp(TargetValue, EasedAlpha)
                 end
             elseif Property == "tween_position" or Property == "tween_size" then
                 TweenFunctions[Property] = function()
@@ -421,7 +497,7 @@ local function FadeIn(PlayerData)
             if Drawing then
                 Tween(Drawing, {
                     Transparency = 1
-                }, Enum.EasingStyle.Quad, Out, 0.75)
+                }, Enum.EasingStyle.Quad, nil, 0.75)
             end
         end
     end)
@@ -461,7 +537,7 @@ local function FadeOut(PlayerData)
             if Drawing then
                 Tween(Drawing, {
                     Transparency = 0
-                }, Enum.EasingStyle.Quad, Out, 0.75)
+                }, Enum.EasingStyle.Quad, nil, 0.75)
             end
         end
     end)
@@ -692,6 +768,16 @@ local Create_Tool_Text = LPH_NO_VIRTUALIZE(function(PlayerData)
         Visible = PlayerData.Rendering
     })
 end)
+local Create_WeaponIcon = LPH_NO_VIRTUALIZE(function(PlayerData)
+    PlayerData.Drawings = PlayerData.Drawings or {}
+    PlayerData.IconKey = nil
+    PlayerData.Drawings.WeaponIcon = Create_Drawing("Image", {
+        Color = Color3.fromRGB(255, 255, 255),
+        Transparency = 1,
+        Data = "",
+        Visible = false
+    })
+end)
 local Create_Image = LPH_NO_VIRTUALIZE(function(PlayerData)
     PlayerData.Drawings = PlayerData.Drawings or {}
     PlayerData.Drawings.Image = Create_Drawing("Image", {
@@ -746,6 +832,9 @@ local Create_ESP = LPH_NO_VIRTUALIZE(function(PlayerData)
     end
     if ESP.Settings.ToolText.Enabled then
         Create_Tool_Text(PlayerData)
+    end
+    if ESP.Settings.WeaponIcon.Enabled then
+        Create_WeaponIcon(PlayerData)
     end
     if ESP.Settings.Image.Enabled then
         Create_Image(PlayerData)
@@ -832,13 +921,8 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData)
     if not Cam then
         return
     end
-    local LocalCharacter = LocalPlayer.Character
-    local LocalRoot = LocalCharacter and LocalCharacter:FindFirstChild("HumanoidRootPart") or nil
     local ScreenPos, OnScreen = Cam:WorldToViewportPoint(Anchor.Position + ESP.Settings.Misc.Offset)
-    local DistanceValue = math.huge
-    if LocalRoot then
-        DistanceValue = (LocalRoot.Position - Root.Position).Magnitude
-    end
+    local DistanceValue = (Cam.CFrame.Position - Root.Position).Magnitude
     local Drawings = PlayerData.Drawings
     if ESP.Settings.DistanceLimit.Enabled and DistanceValue > ESP.Settings.DistanceLimit.MaxDistance then
         if PlayerData.Highlight then
@@ -920,9 +1004,7 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData)
         Drawings.Image.Size = MainSize
     end
     if ESP.Settings.Distance.Enabled and Drawings.Distance then
-        if LocalRoot then
-            Drawings.Distance.Text = ("%dm"):format(math.floor(DistanceValue))
-        end
+        Drawings.Distance.Text = ("%dm"):format(math.floor(DistanceValue))
         Drawings.Distance.Position = MainPos + Vector2.new(Width / 2, DistanceY)
     end
     if ESP.Settings.Tracer.Enabled and Drawings.Tracer then
@@ -1033,13 +1115,46 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData)
         end
         Drawings.ToolText.Position = MainPos + Vector2.new(Width / 2, Y)
     end
+    if ESP.Settings.WeaponIcon.Enabled then
+        local Icon = Drawings.WeaponIcon
+        if Icon then
+            local ToolNow = FindEquippedTool(Character)
+            local Key = IconKey(ToolNow and ToolNow.Name or nil)
+            if Key ~= PlayerData.IconKey then
+                local IconData = Key and GetIconData(Key) or nil
+                if IconData then
+                    PlayerData.IconKey = Key
+                    Icon.Data = IconData
+                elseif Key == nil then
+                    PlayerData.IconKey = nil
+                end
+            end
+            if PlayerData.IconKey ~= nil then
+                local IconSize = math.clamp(math.floor(Height * 0.09), 10, 20)
+                local BelowY = Height + 4
+                if ESP.Settings.Distance.Enabled then
+                    BelowY = BelowY + 12
+                end
+                if ESP.Settings.ToolText.Enabled then
+                    BelowY = BelowY + 12
+                end
+                Icon.Size = Vector2.new(IconSize, IconSize)
+                Icon.Position = MainPos + Vector2.new(Width / 2 - IconSize / 2, BelowY)
+                Icon.Visible = true
+            else
+                Icon.Visible = false
+            end
+        end
+    elseif Drawings.WeaponIcon then
+        Drawings.WeaponIcon.Visible = false
+    end
 end)
 local Update_ESP = LPH_NO_VIRTUALIZE(function()
     for Player, PlayerData in Data do
         pcall(RenderPlayer, Player, PlayerData)
     end
 end)
-RunService.Heartbeat:Connect(function()
+SessionConnections[#SessionConnections + 1] = RunService.Heartbeat:Connect(function()
     for _, Player in Players:GetPlayers() do
         if Player ~= LocalPlayer and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
             local Character = Player.Character
@@ -1097,17 +1212,17 @@ RunService.Heartbeat:Connect(function()
         Heartbeats[#Heartbeats + 1] = Update_ESP
     end
 end)
-RunService.Heartbeat:Connect(function()
+SessionConnections[#SessionConnections + 1] = RunService.Heartbeat:Connect(function()
     for Index = 1, #Heartbeats do
         pcall(Heartbeats[Index])
     end
 end)
-UserInputService.InputChanged:Connect(function(Input)
+SessionConnections[#SessionConnections + 1] = UserInputService.InputChanged:Connect(function(Input)
     if Input.UserInputType == Enum.UserInputType.MouseMovement and ESP.Settings.Tracer.Origin == "Mouse" then
         ESP.Settings.Tracer.Origin_Position = GetOrigin()
     end
 end)
-Players.PlayerRemoving:Connect(function(Player)
+SessionConnections[#SessionConnections + 1] = Players.PlayerRemoving:Connect(function(Player)
     local PlayerData = Data[Player]
     if not PlayerData then
         return
@@ -1258,6 +1373,36 @@ function ESP:Configure(Config)
         self:Update_ESP_Color()
     else
         self:Refresh()
+    end
+end
+ESP._Cleanup = function()
+    for _, PlayerData in pairs(Data) do
+        for _, Connection in PlayerData.Connections do
+            if Connection then
+                pcall(function() Connection:Disconnect() end)
+            end
+        end
+        if PlayerData.RespawnConnection then
+            pcall(function() PlayerData.RespawnConnection:Disconnect() end)
+        end
+        for _, Drawing in PlayerData.Drawings do
+            if Drawing then
+                pcall(function() Drawing:Remove() end)
+            end
+        end
+        for _, Entry in PlayerData.Chams do
+            if Entry and Entry.Adornment then
+                pcall(function() Entry.Adornment:Destroy() end)
+            end
+        end
+        if PlayerData.Highlight then
+            pcall(function() PlayerData.Highlight:Destroy() end)
+        end
+    end
+    for _, Connection in SessionConnections do
+        if Connection then
+            pcall(function() Connection:Disconnect() end)
+        end
     end
 end
 return ESP
