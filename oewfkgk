@@ -51,6 +51,9 @@ ESP.Settings = {
     Character = {
         Hide_Tags = true,
     },
+    Self = {
+        Enabled = false,
+    },
     Bars = {
         Type = "Gradient",
         Speed = 0,
@@ -882,21 +885,34 @@ local function SyncConnections(PlayerData)
             Update_Armor_Bar(PlayerData, NewArmor, math.abs(NewArmor - PlayerData.Fake_Armor))
         end)
     end
-    if ESP.Settings.ToolText.Enabled and Character then
+    if Character then
+        PlayerData.EquippedTool = FindEquippedTool(Character)
+        PlayerData.ToolKey = IconKey(PlayerData.EquippedTool and PlayerData.EquippedTool.Name or nil)
+        if ESP.Settings.ToolText.Enabled then
+            Update_Tool_Text(PlayerData, PlayerData.EquippedTool)
+        end
         PlayerData.Connections.ToolAdded = Character.ChildAdded:Connect(function(Child)
             if Child:IsA("Tool") then
-                Update_Tool_Text(PlayerData, Child)
+                PlayerData.EquippedTool = Child
+                PlayerData.ToolKey = IconKey(Child.Name)
+                if ESP.Settings.ToolText.Enabled then
+                    Update_Tool_Text(PlayerData, Child)
+                end
             end
         end)
         PlayerData.Connections.ToolRemoved = Character.ChildRemoved:Connect(function(Child)
             if Child:IsA("Tool") then
-                Update_Tool_Text(PlayerData, FindEquippedTool(Character))
+                local Current = FindEquippedTool(Character)
+                PlayerData.EquippedTool = Current
+                PlayerData.ToolKey = IconKey(Current and Current.Name or nil)
+                if ESP.Settings.ToolText.Enabled then
+                    Update_Tool_Text(PlayerData, Current)
+                end
             end
         end)
-        Update_Tool_Text(PlayerData, FindEquippedTool(Character))
     end
 end
-local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData)
+local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData, Now)
     if not PlayerData then
         return
     end
@@ -955,14 +971,20 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData)
         PlayerData.Rendering = true
     end
     if PlayerData.Highlight then
-        PlayerData.Highlight.Adornee = Character
+        if PlayerData.Highlight.Adornee ~= Character then
+            PlayerData.Highlight.Adornee = Character
+        end
         PlayerData.Highlight.Enabled = true
     end
-    Update_Chams(PlayerData)
+    if PlayerData.ChamsChar ~= Character then
+        PlayerData.ChamsChar = Character
+        Update_Chams(PlayerData)
+    end
     local Bottom = Cam:WorldToViewportPoint(Anchor.Position - ESP.Settings.Misc.Offset)
     local Difference = Bottom.Y - ScreenPos.Y
     local Height = Difference * 6
     local Width = Difference * 4
+    local SameFrame = PlayerData.LastH == Height and PlayerData.LastW == Width and PlayerData.LastHP == PlayerData.Fake_Health and PlayerData.LastAP == PlayerData.Fake_Armor
     local DistanceY = Height + 4
     local MainSize = Vector2.new(Width, Height)
     local MainPos = Vector2.new(
@@ -991,7 +1013,7 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData)
                     BoxColors.Bottom,
                     BoxColors.Left
                 }
-                local Time = -(tick() * ESP.Settings.Box.AnimationSpeed) % 1
+                local Time = -(Now * ESP.Settings.Box.AnimationSpeed) % 1
                 BoxTop.Color = LerpColors(AnimatedColors, Time)
                 BoxRight.Color = LerpColors(AnimatedColors, (Time + 0.25) % 1)
                 BoxBottom.Color = LerpColors(AnimatedColors, (Time + 0.5) % 1)
@@ -1001,7 +1023,9 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData)
     end
     if ESP.Settings.Image.Enabled and Drawings.Image then
         Drawings.Image.Position = MainPos
-        Drawings.Image.Size = MainSize
+        if not SameFrame then
+            Drawings.Image.Size = MainSize
+        end
     end
     if ESP.Settings.Distance.Enabled and Drawings.Distance then
         Drawings.Distance.Text = ("%dm"):format(math.floor(DistanceValue))
@@ -1022,23 +1046,29 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData)
     if ESP.Settings.Bars.Health.Enabled and Drawings.HealthBar and Drawings.HealthBarOutline then
         local Y_Size = Height + 2
         Drawings.HealthBarOutline.Position = MainPos - ESP.Settings.Bars.Health.Offset
-        Drawings.HealthBarOutline.Size = Vector2.new(4, Y_Size)
+        if not SameFrame then
+            Drawings.HealthBarOutline.Size = Vector2.new(4, Y_Size)
+        end
         local Health_Size = (PlayerData.Fake_Health / Max_Health) * (Y_Size - 2)
         local Bar_Position = MainPos + Vector2.new(-5, Y_Size - Health_Size - 2)
         local Bar_Size = Vector2.new(2, Health_Size)
         Drawings.HealthBar.Position = Bar_Position
-        Drawings.HealthBar.Size = Bar_Size
+        if not SameFrame then
+            Drawings.HealthBar.Size = Bar_Size
+        end
         local Gradient = Drawings.HealthBarGradient
         if Gradient and ESP.Settings.Bars.Health.Gradient then
             Gradient.Position = Bar_Position - ESP.Settings.Misc.BarOffset
-            Gradient.Size = Bar_Size + ESP.Settings.Misc.BarOffset
+            if not SameFrame then
+                Gradient.Size = Bar_Size + ESP.Settings.Misc.BarOffset
+            end
             if ESP.Settings.Bars.Health.Moving_Gradient then
                 if ESP.Settings.Bars.Type == "Rainbow" then
-                    local Hue = (tick() * ESP.Settings.Bars.Speed) % 1
+                    local Hue = (Now * ESP.Settings.Bars.Speed) % 1
                     Drawings.HealthBar.Color = Color3.fromHSV(Hue, 1, 1)
                     Gradient.Color = Color3.fromHSV((Hue + 0.08) % 1, 1, 1)
                 elseif ESP.Settings.Bars.Type == "Gradient" then
-                    local Time = tick() * ESP.Settings.Bars.Speed
+                    local Time = Now * ESP.Settings.Bars.Speed
                     local BarColors = ESP.Settings.Bars.Health.Colors
                     local Position = (Time % 1) * (#BarColors - 1)
                     local Section = math.floor(Position) + 1
@@ -1051,7 +1081,7 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData)
                     )
                 elseif ESP.Settings.Bars.Type == "Solid" then
                     local BarColors = ESP.Settings.Bars.Health.Colors
-                    local Index = math.floor((tick() * 2) % #BarColors) + 1
+                    local Index = math.floor((Now * 2) % #BarColors) + 1
                     local BarColor = BarColors[Index]
                     Drawings.HealthBar.Color = BarColor
                     Gradient.Color = BarColor
@@ -1064,24 +1094,29 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData)
         local Armor = PlayerData.Fake_Armor
         if not ESP.Settings.Bars.Armor.Hide_If_Empty or Armor ~= 0 then
             local Y_Size = Height + 2
-            Drawings.ArmorBarOutline.Position = MainPos + Vector2.new(Width + ESP.Settings.Bars.Armor.Offset.X - 4, -ESP.Settings.Bars.Armor.Offset.Y)
+            Drawings.ArmorBarOutline.Position = MainPos + Vector2.new(Width + 2, -ESP.Settings.Bars.Armor.Offset.Y)
+            if not SameFrame then
+                Drawings.ArmorBarOutline.Size = Vector2.new(4, Y_Size)
+            end
             Drawings.ArmorBarOutline.Size = Vector2.new(4, Y_Size)
             local Armor_Size = (math.clamp(Armor / 130, 0, 1)) * (Y_Size - 2)
-            local Bar_Position = MainPos + Vector2.new(Width + ESP.Settings.Bars.Armor.Offset.X - 3, Y_Size - Armor_Size - 2)
+            local Bar_Position = MainPos + Vector2.new(Width + 3, Y_Size - Armor_Size - 2)
             local Bar_Size = Vector2.new(2, Armor_Size)
             Drawings.ArmorBar.Position = Bar_Position
-            Drawings.ArmorBar.Size = Bar_Size
+            if not SameFrame then
+                Drawings.ArmorBar.Size = Bar_Size
+            end
             local Gradient = Drawings.ArmorBarGradient
             if Gradient and ESP.Settings.Bars.Armor.Gradient then
                 Gradient.Position = Bar_Position - ESP.Settings.Misc.BarOffset
                 Gradient.Size = Bar_Size + ESP.Settings.Misc.BarOffset
                 if ESP.Settings.Bars.Armor.Moving_Gradient then
                     if ESP.Settings.Bars.Type == "Rainbow" then
-                        local Time = (tick() * ESP.Settings.Bars.Speed) % 1
+                        local Time = (Now * ESP.Settings.Bars.Speed) % 1
                         Drawings.ArmorBar.Color = Color3.fromHSV(Time % 1, 1, 1)
                         Gradient.Color = Color3.fromHSV((Time + 0.08) % 1, 1, 1)
                     elseif ESP.Settings.Bars.Type == "Gradient" then
-                        local Time = tick() * ESP.Settings.Bars.Speed
+                        local Time = Now * ESP.Settings.Bars.Speed
                         local BarColors = ESP.Settings.Bars.Armor.Colors
                         local Position = (Time % 1) * (#BarColors - 1)
                         local Section = math.floor(Position) + 1
@@ -1094,7 +1129,7 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData)
                         )
                     elseif ESP.Settings.Bars.Type == "Solid" then
                         local BarColors = ESP.Settings.Bars.Armor.Colors
-                        local Index = math.floor((tick() * 2) % #BarColors) + 1
+                        local Index = math.floor((Now * 2) % #BarColors) + 1
                         local BarColor = BarColors[Index]
                         Drawings.ArmorBar.Color = BarColor
                         Gradient.Color = BarColor
@@ -1116,8 +1151,7 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData)
     if ESP.Settings.WeaponIcon.Enabled then
         local Icon = Drawings.WeaponIcon
         if Icon then
-            local ToolNow = FindEquippedTool(Character)
-            local Key = IconKey(ToolNow and ToolNow.Name or nil)
+            local Key = PlayerData.ToolKey
             if Key ~= PlayerData.IconKey then
                 local IconData = Key and GetIconData(Key) or nil
                 if IconData then
@@ -1152,15 +1186,57 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData)
         end
         Drawings.ToolText.Position = MainPos + Vector2.new(Width / 2, Y)
     end
+    PlayerData.LastH = Height
+    PlayerData.LastW = Width
+    PlayerData.LastHP = PlayerData.Fake_Health
+    PlayerData.LastAP = PlayerData.Fake_Armor
 end)
 local Update_ESP = LPH_NO_VIRTUALIZE(function()
+    local FrameTick = tick()
     for Player, PlayerData in Data do
-        pcall(RenderPlayer, Player, PlayerData)
+        pcall(RenderPlayer, Player, PlayerData, FrameTick)
     end
 end)
-SessionConnections[#SessionConnections + 1] = RunService.Heartbeat:Connect(function()
+local function UntrackPlayer(Player)
+    local PlayerData = Data[Player]
+    if not PlayerData then
+        return
+    end
+    Data[Player] = nil
+    for _, Connection in PlayerData.Connections do
+        if Connection then
+            Connection:Disconnect()
+        end
+    end
+    if PlayerData.RespawnConnection then
+        PlayerData.RespawnConnection:Disconnect()
+    end
+    for _, Drawing in PlayerData.Drawings do
+        if Drawing then
+            Drawing:Remove()
+        end
+    end
+    for _, Entry in PlayerData.Chams do
+        if Entry and Entry.Adornment then
+            Entry.Adornment:Destroy()
+        end
+    end
+    if PlayerData.Highlight then
+        PlayerData.Highlight:Destroy()
+    end
+end
+local DiscoveryAccum = 0
+SessionConnections[#SessionConnections + 1] = RunService.Heartbeat:Connect(function(Delta)
+    DiscoveryAccum = DiscoveryAccum + (Delta or 0)
+    if DiscoveryAccum < 0.25 then
+        return
+    end
+    DiscoveryAccum = 0
+    if not ESP.Settings.Self.Enabled then
+        UntrackPlayer(LocalPlayer)
+    end
     for _, Player in Players:GetPlayers() do
-        if Player ~= LocalPlayer and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
+        if (Player ~= LocalPlayer or ESP.Settings.Self.Enabled) and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
             local Character = Player.Character
             local Humanoid = Character:FindFirstChildOfClass("Humanoid")
             if Humanoid then
@@ -1185,6 +1261,13 @@ SessionConnections[#SessionConnections + 1] = RunService.Heartbeat:Connect(funct
                         Chams = {},
                         Connections = {},
                         RespawnConnection = nil,
+                        EquippedTool = nil,
+                        ToolKey = nil,
+                        ChamsChar = nil,
+                        LastH = nil,
+                        LastW = nil,
+                        LastHP = nil,
+                        LastAP = nil,
                     }
                     Data[Player] = PlayerData
                     Create_ESP(PlayerData)
@@ -1205,6 +1288,9 @@ SessionConnections[#SessionConnections + 1] = RunService.Heartbeat:Connect(funct
                         PlayerData.Fake_Armor = PlayerData.ArmorValue and PlayerData.ArmorValue.Value or 0
                         SyncConnections(PlayerData)
                         HidePlayerTags(PlayerData)
+                        PlayerData.ChamsChar = nil
+                        Update_Chams(PlayerData)
+                        PlayerData.ChamsChar = NewCharacter
                         FadeIn(PlayerData)
                     end)
                     FadeIn(PlayerData)
@@ -1242,28 +1328,7 @@ SessionConnections[#SessionConnections + 1] = Players.PlayerRemoving:Connect(fun
         if not Data[Player] then
             return
         end
-        for _, Connection in PlayerData.Connections do
-            if Connection then
-                Connection:Disconnect()
-            end
-        end
-        if PlayerData.RespawnConnection then
-            PlayerData.RespawnConnection:Disconnect()
-        end
-        for _, Drawing in PlayerData.Drawings do
-            if Drawing then
-                Drawing:Remove()
-            end
-        end
-        for _, Entry in PlayerData.Chams do
-            if Entry and Entry.Adornment then
-                Entry.Adornment:Destroy()
-            end
-        end
-        if PlayerData.Highlight then
-            PlayerData.Highlight:Destroy()
-        end
-        Data[Player] = nil
+        UntrackPlayer(Player)
     end)
 end)
 function ESP:Refresh()
@@ -1288,6 +1353,11 @@ function ESP:Refresh()
             end
             PlayerData.Fake_Armor = PlayerData.ArmorValue and PlayerData.ArmorValue.Value or 0
         end
+        PlayerData.LastH = nil
+        PlayerData.LastW = nil
+        PlayerData.LastHP = nil
+        PlayerData.LastAP = nil
+        PlayerData.ChamsChar = PlayerData.Character
         Create_ESP(PlayerData)
         SyncConnections(PlayerData)
         PlayerData.Rendering = WasRendering
