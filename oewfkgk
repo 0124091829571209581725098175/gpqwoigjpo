@@ -4,9 +4,9 @@ do
     local ESP = getgenv().ESP
 
     cleardrawcache()
-    
+
     function LPH_NO_VIRTUALIZE(...)
-        return ... 
+        return ...
     end
 end
 
@@ -19,22 +19,16 @@ local TweenService = game:GetService("TweenService")
 
 local LocalPlayer = Players.LocalPlayer
 local CoreGui = game:GetService("CoreGui")
-local GuiInset = GuiService:GetGuiInset()
-local GetHui = gethui and gethui() or nil
+local GetHui = gethui and gethui() or CoreGui
 
 local Health = 100
 local Max_Health = 100
-
-local Tool = nil
----------------------------
 ESP.Settings = {
     Box = {
         Enabled = false,
         Thickness = 1,
-
         Animated = true,
         AnimationSpeed = 0,
-
         Colors = {
             Top = Color3.fromRGB(255,255,255),
             Right = Color3.fromRGB(255,255,255),
@@ -42,7 +36,6 @@ ESP.Settings = {
             Left = Color3.fromRGB(255,255,255)
         },
     },
-
     Name = {
         Enabled = false,
         Use_Both_Name = true,
@@ -50,21 +43,17 @@ ESP.Settings = {
         Use_Display_Name = false,
         Color = Color3.fromRGB(255,255,255),
     },
-
     Character = {
         Hide_Tags = true,
     },
-
     Bars = {
-        Type = "Gradient", -- Solid, Gradient, Rainbow
+        Type = "Gradient",
         Speed = 0,
-
         Health = {
             Enabled = false,
             Offset = Vector2.new(6,1),
             Gradient = true,
             Moving_Gradient = true,
-
             Colors = {
                 Color3.fromRGB(255, 255, 255),
                 Color3.fromRGB(255, 255, 255),
@@ -73,14 +62,12 @@ ESP.Settings = {
                 Color3.fromRGB(255, 255, 255)
             },
         },
-
         Armor = {
             Enabled = false,
             Offset = Vector2.new(10,1),
             Gradient = true,
             Moving_Gradient = true,
             Hide_If_Empty = true,
-
             Colors = {
                 Color3.fromRGB(255, 255, 255),
                 Color3.fromRGB(255, 255, 255),
@@ -90,83 +77,63 @@ ESP.Settings = {
             },
         }
     },
-
     Chams = {
         Enabled = false,
         Offset = Vector3.new(0.01,0.01,0.01),
         ZIndex = 1,
-
         Color = Color3.fromRGB(255,255,255),
         Transparency = 0,
     },
-
     Image = {
         Enabled = false,
         Data = "Gradient",
     },
-
     Distance = {
         Enabled = false,
-
         Color = Color3.fromRGB(255,255,255),
     },
-
     Tracer = {
         Enabled = false,
         Origin = "Above",
         Outline = true,
         Origin_Position = Vector2.zero,
-
         Color = Color3.fromRGB(255,255,255),
         OutlineColor = Color3.fromRGB(255,255,255),
     },
-
     Highlight = {
         Enabled = false,
         DepthMode = Enum.HighlightDepthMode.AlwaysOnTop,
-
         FillColor = Color3.fromRGB(255,255,255),
         FillTransparency = 0.5,
-    
         OutlineColor = Color3.fromRGB(255,255,255),
         OutlineTransparency = 0,
     },
-
     ToolText = {
         Enabled = false,
-
         Color = Color3.fromRGB(255,255,255),
     },
-
     HealthText = {
         Enabled = false,
         NormalOffset = Vector2.new(12,1),
         Offset = Vector2.new(12,1),
         HideFullHealth = false,
-
         Color = Color3.fromRGB(255,255,255),
     },
-
     DistanceLimit = {
         Enabled = false,
         MaxDistance = 1000,
     },
-
     Misc = {
-        Offset = Vector3.new(0,0.5,0),
-        BarOffset = Vector2.new(0,1),
+        Offset = Vector3.new(0, 0.5, 0),
+        BarOffset = Vector2.new(0, 1),
         ZeroSize = Vector2.zero,
-
         MainFont = identifyexecutor() == "Wave" and 1 or 2,
         MainSize = 13,
-
         SmallFont = identifyexecutor() == "Wave" and 1 or 2,
         SmallSize = identifyexecutor() == "Wave" and 13 or 11,
     }
 }
--------------------------
 local Data = {}
-
 local Transparencies = {
     [1] = 1,
     [2] = 1,
@@ -183,7 +150,6 @@ local Transparencies = {
     [13] = 1,
     [14] = 0.11,
 }
-
 local Colors = {
     [1] = Color3.fromRGB(255,255,255),
     [2] = Color3.fromRGB(30,30,30),
@@ -202,7 +168,6 @@ local Colors = {
     [15] = Color3.fromRGB(255,255,255),
     [16] = Color3.fromRGB(1, 1, 1)
 }
-
 local Alt_Information = {
     [1] = Color3.fromRGB(0, 0, 0),
     [2] = 0.9,
@@ -213,7 +178,6 @@ local Alt_Information = {
     [7] = Color3.fromRGB(249, 217, 255),
     [8] = 0.2
 }
-
 local Body_Parts = {
     "Head",
     "UpperTorso",
@@ -229,45 +193,39 @@ local Body_Parts = {
     "LeftFoot",
     "RightUpperLeg",
     "RightLowerLeg",
-    "RightFoot"
+    "RightFoot",
+    "Torso",
+    "Left Arm",
+    "Right Arm",
+    "Left Leg",
+    "Right Leg"
 }
--------------------------
 local Bar_Gradient_Data = base64_decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAACACAYAAADK+QP0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAACUSURBVChTbVHRFQMhDFLjEA7T/ecqoXBRe3woJIjm2dZanwH0XLABIyLEDLJdls+ypYznmCxkB2Q22GUMa+wmAUPcLr1gy+JbA9gZfWQV5RoujWhnCrtjzDnVsLkWvpRRnPeyUNZslLooxSMvVvIKUCggn3HdoQFL5v4LBd7yCDUqwGcrhVCe8efzw6+U3WKcX9H7F7u/BOHzO9gQAAAAAElFTkSuQmCC")
 local Image_Data_Gradient = base64_decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAABkCAYAAABHLFpgAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAABTSURBVChTdU/LDsAwCGJu1/3/59rUC5HAhaA8bNHdfwF4LrwbagN3wgakwMVc4ttCTLhxmKjOIma5S5VfiC0TE180R8aRIAJvuJfGGHcsoHoZ6gCUSgTCpTUDpwAAAABJRU5ErkJggg==")
 local Image_Data_Filled = base64_decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAMSURBVBhXY/j//z8ABf4C/qc1gYQAAAAASUVORK5CYII=")
--------------------------
-local function LerpColors(Colors, Offset)
-    local Index = math.floor(Offset * #Colors) + 1
-    local NextIndex = (Index % #Colors) + 1
-
-    local Alpha = (Offset * #Colors) % 1
-
-    return Colors[Index]:Lerp(
-        Colors[NextIndex],
+local function LerpColors(ColorList, Offset)
+    local Index = math.floor(Offset * #ColorList) + 1
+    local NextIndex = (Index % #ColorList) + 1
+    local Alpha = (Offset * #ColorList) % 1
+    return ColorList[Index]:Lerp(
+        ColorList[NextIndex],
         Alpha
     )
 end
-
 local Create_Drawing = LPH_NO_VIRTUALIZE(function(Class, Properties)
     local Object = Drawing.new(Class)
-
     for Property, Value in Properties do
         Object[Property] = Value
     end
-
     return Object
 end)
-
 local Create_Instance = LPH_NO_VIRTUALIZE(function(Class, Properties)
     local Instance_ = Instance.new(Class)
-
     for Property, Value in Properties do
         Instance_[Property] = Value
     end
-
     return Instance_
 end)
-
 local GetOrigin = LPH_NO_VIRTUALIZE(function()
     local ViewPort = Camera.ViewportSize
     if ESP.Settings.Tracer.Origin == "Above" then
@@ -280,331 +238,89 @@ local GetOrigin = LPH_NO_VIRTUALIZE(function()
         return Vector2.new(ViewPort.X / 2, ViewPort.Y)
     end
 end)
-
 ESP.Settings.Tracer.Origin_Position = GetOrigin()
-
-local Update_ESP = LPH_NO_VIRTUALIZE(function()
-    for Player, Data in Data do
-        if not Data then
-            continue
-        end
-
-        local Character = Player.Character
-        if not Character then
-            continue
-        end
-
-        Data.UpperTorso = Character:FindFirstChild("UpperTorso")
-        local UpperTorso = Data.UpperTorso
-        
-        if not UpperTorso then
-            continue
-        end
-
-        local LocalRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-        if not LocalRoot then
-            continue
-        end
-
-        local ScreenPos, OnScreen = Camera:WorldToViewportPoint(UpperTorso.Position + ESP.Settings.Misc.Offset)
-        local DistanceValue = LocalRoot and (LocalRoot.Position - Data.Root.Position).Magnitude or math.huge
-
-        local Drawings = Data.Drawings
-
-        if ESP.Settings.DistanceLimit.Enabled and DistanceValue > ESP.Settings.DistanceLimit.MaxDistance then
-            if Data.Highlight then
-                Data.Highlight.Enabled = false
-            end
-
-            if Data.Rendering then
-                for _, Drawing in Drawings do
-                    Drawing.Visible = false
-                end
-                Data.Rendering = false
-            end
-            continue
-        end
-
-        if OnScreen then
-            if not Data.Rendering then
-                for _, Drawing in Drawings do
-                    Drawing.Visible = true
-                end
-                Data.Rendering = true
-            end
-
-            local Bottom = Camera:WorldToViewportPoint(UpperTorso.Position - ESP.Settings.Misc.Offset)
-
-            local Difference = Bottom.Y - ScreenPos.Y
-            local Height = Difference * 6
-            local Width = Difference * 4
-
-            local DistanceY = Height + 4
-            local ToolY = Height + 16
-
-            local MainSize = Vector2.new(Width, Height)
-            local MainPos = Vector2.new(
-                Bottom.X - Width / 2,
-                Bottom.Y - Height / 2
-            )
-
-            local GradientOffset = (tick() * 0.5) % 1
-
-            if ESP.Settings.Box.Enabled then
-                local BoxTop = Data.Drawings.BoxTop
-                local BoxRight = Data.Drawings.BoxRight
-                local BoxBottom = Data.Drawings.BoxBottom
-                local BoxLeft = Data.Drawings.BoxLeft
-
-                local Pos = MainPos
-                local Size = MainSize
-                
-                BoxTop.From = Pos
-                BoxTop.To = Pos + Vector2.new(Size.X,0)
-                
-                BoxRight.From = Pos + Vector2.new(Size.X,0)
-                BoxRight.To = Pos + Size
-                
-                BoxBottom.From = Pos + Vector2.new(0,Size.Y)
-                BoxBottom.To = Pos + Size
-                
-                BoxLeft.From = Pos
-                BoxLeft.To = Pos + Vector2.new(0,Size.Y)
-
-                if ESP.Settings.Box.Animated then
-                    local BoxColors = ESP.Settings.Box.Colors
-                
-                    local Colors = {
-                        BoxColors.Top,
-                        BoxColors.Right,
-                        BoxColors.Bottom,
-                        BoxColors.Left
-                    }
-                
-                    local Time = -(tick() * ESP.Settings.Box.AnimationSpeed) % 1
-                
-                    Data.Drawings.BoxTop.Color =
-                        LerpColors(Colors, Time)
-                
-                    Data.Drawings.BoxRight.Color =
-                        LerpColors(Colors, (Time + 0.25) % 1)
-                
-                    Data.Drawings.BoxBottom.Color =
-                        LerpColors(Colors, (Time + 0.5) % 1)
-                
-                    Data.Drawings.BoxLeft.Color =
-                        LerpColors(Colors, (Time + 0.75) % 1)
-                end
-            end
-
-            if ESP.Settings.Image.Enabled then
-                local Image = Data.Drawings.Image
-            
-                Image.Position = MainPos
-                Image.Size = MainSize
-            end
-
-            if Data.Highlight then
-                Data.Highlight.Enabled = true
-            end
-
-            if ESP.Settings.Distance.Enabled then
-                local Distance = Data.Drawings.Distance
-
-                if LocalRoot then
-                    Distance.Text = ("%dm"):format(math.floor(DistanceValue))
-                end
-
-                Data.Drawings.Distance.Position = MainPos + Vector2.new(Width / 2, DistanceY)
-            end
-
-            if ESP.Settings.Tracer.Enabled then
-                local Tracer = Data.Drawings.Tracer
-                local Outline = Data.Drawings.TracerOutline
-
-                local X_Pos = ScreenPos.X
-                local Y_Pos = ScreenPos.Y
-
-                Tracer.From = ESP.Settings.Tracer.Origin_Position
-                Tracer.To = Vector2.new(X_Pos, Y_Pos)
-
-                if Outline and ESP.Settings.Tracer.Outline then
-                    Outline.From = Tracer.From
-                    Outline.To = Tracer.To
-                end
-            end
-            
-            if ESP.Settings.Name.Enabled then
-                Data.Drawings.Name.Position = MainPos + Vector2.new(Width/2, -15)
-            end
-
-            if ESP.Settings.Bars.Health.Enabled then
-                local Y_Size = Height + 2
-                local Outline = Data.Drawings.HealthBarOutline
-
-                Outline.Position = MainPos - ESP.Settings.Bars.Health.Offset
-                Outline.Size = Vector2.new(4, Y_Size)
-
-                local Health_Size = (Data.Fake_Health/Max_Health) * (Y_Size-2)
-                local Bar_Position = MainPos + Vector2.new(-5, Y_Size - Health_Size - 2)
-                local Bar_Size = Vector2.new(2, Health_Size)
-
-                local Bar = Data.Drawings.HealthBar
-                Bar.Position = Bar_Position
-                Bar.Size = Bar_Size
-
-                if ESP.Settings.Bars.Health.Gradient then
-                    local Gradient = Data.Drawings.HealthBarGradient
-                    if Gradient then
-                        Gradient.Position = Bar_Position - ESP.Settings.Misc.BarOffset
-                        Gradient.Size = Bar_Size + ESP.Settings.Misc.BarOffset
-
-                        if ESP.Settings.Bars.Health.Moving_Gradient then
-                            if ESP.Settings.Bars.Type == "Rainbow" then
-                                local Hue = (tick() * ESP.Settings.Bars.Speed) % 1
-                            
-                                Bar.Color = Color3.fromHSV(Hue, 1, 1)
-                            
-                                if Gradient then
-                                    Gradient.Color = Color3.fromHSV((Hue + 0.08) % 1, 1, 1)
-                                end
-                            elseif ESP.Settings.Bars.Type == "Gradient" then
-                                local Time = tick() * ESP.Settings.Bars.Speed
-                                local Colors = ESP.Settings.Bars.Health.Colors
-                            
-                                local Position = (Time % 1) * (#Colors - 1)
-                                local Section = math.floor(Position) + 1
-                                local Alpha = Position % 1
-                            
-                                local Color = Colors[Section]:Lerp(Colors[Section + 1], Alpha)
-                            
-                                Bar.Color = Color
-                            
-                                if Gradient then
-                                    Gradient.Color = Colors[(Section % (#Colors - 1)) + 1]:Lerp(
-                                        Colors[((Section + 1) % (#Colors - 1)) + 1],
-                                        Alpha
-                                    )
-                                end
-                            elseif ESP.Settings.Bars.Type == "Solid" then
-                                local Colors = ESP.Settings.Bars.Health.Colors
-                            
-                                local Index = math.floor((tick() * 2) % #Colors) + 1
-                                local Color = Colors[Index]
-                            
-                                Bar.Color = Color
-                            
-                                if Gradient then
-                                    Gradient.Color = Color
-                                end
-                            end
-                        end
-                    end
-                end 
-            end
-
-            local Armor_Ignored = false
-            if ESP.Settings.Bars.Armor.Enabled then
-                local Armor = Data.Fake_Armor
-                if not ESP.Settings.Bars.Armor.Hide_If_Empty or Armor ~= 0 then
-                    local Y_Size = Height + 2
-                    local Outline = Data.Drawings.ArmorBarOutline
-                    Outline.Position = MainPos - ESP.Settings.Bars.Armor.Offset
-                    Outline.Size = Vector2.new(4, Y_Size)
-
-                    local Armor_Size = (math.clamp(Armor/130, 0, 1)) * (Y_Size-2)
-
-                    local Bar_Position = MainPos + Vector2.new(-ESP.Settings.Bars.Armor.Offset.X+1, Y_Size - Armor_Size - 2)
-                    local Bar_Size = Vector2.new(2, Armor_Size)
-
-                    local Bar = Data.Drawings.ArmorBar
-                    Bar.Position = Bar_Position
-                    Bar.Size = Bar_Size
-
-                    if ESP.Settings.Bars.Armor.Gradient then
-                        local Gradient = Data.Drawings.ArmorBarGradient
-                        if Gradient then
-                            Gradient.Position = Bar_Position - ESP.Settings.Misc.BarOffset
-                            Gradient.Size = Bar_Size + ESP.Settings.Misc.BarOffset
-
-                            if ESP.Settings.Bars.Armor.Moving_Gradient then
-                                if ESP.Settings.Bars.Type == "Rainbow" then
-                                    local Time = (tick() * ESP.Settings.Bars.Speed) % 1
-                                
-                                    Bar.Color = Color3.fromHSV(Time % 1, 1, 1)
-                                
-                                    if Gradient then
-                                        Gradient.Color = Color3.fromHSV((Time + 0.08) % 1, 1, 1)
-                                    end
-                                elseif ESP.Settings.Bars.Type == "Gradient" then
-                                    local Time = tick() * ESP.Settings.Bars.Speed
-                                    local Colors = ESP.Settings.Bars.Armor.Colors
-                                    
-                                    local Position = (Time % 1) * (#Colors - 1)
-                                    local Section = math.floor(Position) + 1
-                                    local Alpha = Position % 1
-                                
-                                    local Color = Colors[Section]:Lerp(Colors[Section + 1], Alpha)
-                                
-                                    Bar.Color = Color
-                                
-                                    if Gradient then
-                                        Gradient.Color = Colors[(Section % (#Colors - 1)) + 1]:Lerp(
-                                            Colors[((Section + 1) % (#Colors - 1)) + 1],
-                                            Alpha
-                                        )
-                                    end
-                                elseif ESP.Settings.Bars.Type == "Solid" then
-                                    local Colors = ESP.Settings.Bars.Armor.Colors
-                                
-                                    local Index = math.floor((tick() * 2) % #Colors) + 1
-                                    local Color = Colors[Index]
-                                
-                                    Bar.Color = Color
-                                
-                                    if Gradient then
-                                        Gradient.Color = Color
-                                    end
-                                end
-                            end
-                        end
-                    end
-                else
-                    Armor_Ignored = true
-                end
-            end
-
-            if ESP.Settings.HealthText.Enabled then
-                local Health_Text = Data.Drawings.HealthText
-                Health_Text.Position = MainPos - (Armor_Ignored and ESP.Settings.HealthText.NormalOffset or ESP.Settings.HealthText.Offset) - Vector2.new(Health_Text.TextBounds.X, 0)
-            end
-
-            if ESP.Settings.ToolText.Enabled then
-                local Y = Height + 2
-            
-                if ESP.Settings.Distance.Enabled then
-                    Y = Height + 16
-                end
-            
-                Data.Drawings.ToolText.Position = MainPos + Vector2.new(Width / 2, Y)
-            end
-        else
-            if Data.Highlight then
-                Data.Highlight.Enabled = false
-            end
-
-            if Data.Rendering then
-                for _, Drawing in Drawings do
-                    Drawing.Visible = false
-                end
-                Data.Rendering = false
-            end
-        end
+local function GetAnchor(Character)
+    if not Character then
+        return nil
     end
+    return Character:FindFirstChild("UpperTorso") or Character:FindFirstChild("Torso")
+end
+local function GetArmorValue(Character)
+    local BodyEffects = Character and Character:FindFirstChild("BodyEffects") or nil
+    return BodyEffects and BodyEffects:FindFirstChild("Armor") or nil
+end
+local function GetToolText(ToolInstance)
+    if ToolInstance then
+        return string.lower(ToolInstance.Name:gsub("[^%w]", ""))
+    end
+    return ""
+end
+local function FindEquippedTool(Character)
+    if not Character then
+        return nil
+    end
+    return Character:FindFirstChildOfClass("Tool")
+end
+local function HidePlayerTags(PlayerData)
+    if not ESP.Settings.Character.Hide_Tags then
+        return
+    end
+    local Humanoid = PlayerData.Humanoid
+    if Humanoid then
+        Humanoid.DisplayName = "‎"
+        Humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+    end
+end
+local Update_Health_Bar = LPH_NO_VIRTUALIZE(function(PlayerData, New_Health, Difference)
+    if math.abs(Difference) <= 1 then
+        PlayerData.Fake_Health = New_Health
+        return
+    end
+    Tween(PlayerData, {
+        Fake_Health = New_Health
+    }, "Sine", Out, 0.15)
 end)
-
+local Update_Armor_Bar = LPH_NO_VIRTUALIZE(function(PlayerData, New_Armor, Difference)
+    local Bar = PlayerData.Drawings.ArmorBar
+    if not Bar then
+        PlayerData.Fake_Armor = New_Armor
+        return
+    end
+    local Outline = PlayerData.Drawings.ArmorBarOutline
+    local Gradient = PlayerData.Drawings.ArmorBarGradient
+    if ESP.Settings.Bars.Armor.Hide_If_Empty and New_Armor == 0 then
+        Bar.Size = ESP.Settings.Misc.ZeroSize
+        if Outline then
+            Outline.Size = ESP.Settings.Misc.ZeroSize
+        end
+        if Gradient then
+            Gradient.Size = ESP.Settings.Misc.ZeroSize
+        end
+        PlayerData.Fake_Armor = 0
+        return
+    elseif Difference <= 1 then
+        PlayerData.Fake_Armor = New_Armor
+        return
+    end
+    PlayerData.Fake_Armor = math.floor(New_Armor)
+end)
+local Update_Health_Text = LPH_NO_VIRTUALIZE(function(PlayerData, Health_)
+    local TextDrawing = PlayerData.Drawings.HealthText
+    if not TextDrawing then
+        return
+    end
+    TextDrawing.Text = (ESP.Settings.HealthText.HideFullHealth and Health_ >= Max_Health) and "" or tostring(Health_)
+end)
+local Update_Tool_Text = LPH_NO_VIRTUALIZE(function(PlayerData, ToolInstance)
+    local TextDrawing = PlayerData.Drawings.ToolText
+    if not TextDrawing then
+        return
+    end
+    TextDrawing.Text = GetToolText(ToolInstance)
+end)
 local Tween
 local Heartbeats = {}
+local UpdateQueued = false
 local Active_Tweens = {
     Color = {},
     Color3 = {},
@@ -619,72 +335,63 @@ local Active_Tweens = {
     ImageTransparency = {},
     FillColor = {},
     OutlineColor = {},
-    
     Fake_Health = {},
     Fake_Armor = {},
-
     [11] = {},
     [15] = {}
 }
-
 do
     local Sqrt = math.sqrt
-
     Tween = LPH_NO_VIRTUALIZE(function(Object, Properties, EasingStyle, _, TweenDuration)
         local StartTime = os.clock()
-
         local TweenFunctions = {}
-        
         for Property, TargetValue in Properties do
-        	local ActiveTween = Active_Tweens[Property][Object]
-        	if ActiveTween then
-        		for Index = 1, # Heartbeats do
-        			if Heartbeats[Index] == ActiveTween then
-        				table.remove(Heartbeats, Index)
-        				break
-        			end
-        		end
-        	end
-        	local StartValue = Object[Property]
-        	if Property == "Color" or Property == "Color3" or Property == "FillColor" or Property == "OutlineColor" then
-        		TweenFunctions[Property] = function()
-        			local Alpha = (os.clock() - StartTime) / TweenDuration
-        			local EasedAlpha = EasingStyle == Enum.EasingStyle.Exponential and (Alpha == 1 and 1 or 1 - 2 ^ (-10 * Alpha)) or EasingStyle == Enum.EasingStyle.Quad and Alpha ^ 2 or Sqrt(1 - (Alpha - 1) ^ 2)
-        			if EasingStyle == "Sine" then
-        				Alpha = math.clamp(Alpha, 0, 1)
-        				EasedAlpha = Alpha < 0.5 and 0.5 * math.sin(Alpha * 355 / 113) or 0.5 + 0.5 * (1 - math.cos((Alpha - 0.5) * 355 / 113))
-        			end
-        			Object[Property] = Color3.fromRGB["Lerp"](StartValue, TargetValue, EasedAlpha)
-        		end
-        	elseif Property == "tween_position" or Property == "tween_size" then
-        		TweenFunctions[Property] = function()
-        			local Alpha = (os.clock() - StartTime) / TweenDuration
-        			local EasedAlpha = EasingStyle == Enum.EasingStyle.Exponential and (Alpha == 1 and 1 or 1 - 2 ^ (-10 * Alpha)) or EasingStyle == Enum.EasingStyle.Quad and Alpha ^ 2 or Sqrt(1 - (Alpha - 1) ^ 2)
-        			local Delta = TargetValue - StartValue
-        			Delta = UDim2.new(
-                                Delta.X.Scale * EasedAlpha, Delta.X.Offset * EasedAlpha, Delta.Y.Scale * EasedAlpha, Delta.Y.Offset * EasedAlpha)
-        			Object[Property] = StartValue + Delta
-        		end
-        	else
-        		TweenFunctions[Property] = function()
-        			local Alpha = (os.clock() - StartTime) / TweenDuration
-        			local EasedAlpha = EasingStyle == Enum.EasingStyle.Exponential and (Alpha == 1 and 1 or 1 - 2 ^ (-10 * Alpha)) or EasingStyle == Enum.EasingStyle.Quad and Alpha ^ 2 or Sqrt(1 - (Alpha - 1) ^ 2)
-        			Object[Property] = StartValue + (TargetValue - StartValue) * EasedAlpha
-        		end
-        	end
+            local ActiveTween = Active_Tweens[Property][Object]
+            if ActiveTween then
+                for Index = 1, #Heartbeats do
+                    if Heartbeats[Index] == ActiveTween then
+                        table.remove(Heartbeats, Index)
+                        break
+                    end
+                end
+            end
+            local StartValue = Object[Property]
+            if Property == "Color" or Property == "Color3" or Property == "FillColor" or Property == "OutlineColor" then
+                TweenFunctions[Property] = function()
+                    local Alpha = (os.clock() - StartTime) / TweenDuration
+                    local EasedAlpha = EasingStyle == Enum.EasingStyle.Exponential and (Alpha == 1 and 1 or 1 - 2 ^ (-10 * Alpha)) or EasingStyle == Enum.EasingStyle.Quad and Alpha ^ 2 or Sqrt(1 - (Alpha - 1) ^ 2)
+                    if EasingStyle == "Sine" then
+                        Alpha = math.clamp(Alpha, 0, 1)
+                        EasedAlpha = Alpha < 0.5 and 0.5 * math.sin(Alpha * 355 / 113) or 0.5 + 0.5 * (1 - math.cos((Alpha - 0.5) * 355 / 113))
+                    end
+                    Object[Property] = Color3.fromRGB["Lerp"](StartValue, TargetValue, EasedAlpha)
+                end
+            elseif Property == "tween_position" or Property == "tween_size" then
+                TweenFunctions[Property] = function()
+                    local Alpha = (os.clock() - StartTime) / TweenDuration
+                    local EasedAlpha = EasingStyle == Enum.EasingStyle.Exponential and (Alpha == 1 and 1 or 1 - 2 ^ (-10 * Alpha)) or EasingStyle == Enum.EasingStyle.Quad and Alpha ^ 2 or Sqrt(1 - (Alpha - 1) ^ 2)
+                    local Delta = TargetValue - StartValue
+                    Delta = UDim2.new(
+                        Delta.X.Scale * EasedAlpha, Delta.X.Offset * EasedAlpha, Delta.Y.Scale * EasedAlpha, Delta.Y.Offset * EasedAlpha)
+                    Object[Property] = StartValue + Delta
+                end
+            else
+                TweenFunctions[Property] = function()
+                    local Alpha = (os.clock() - StartTime) / TweenDuration
+                    local EasedAlpha = EasingStyle == Enum.EasingStyle.Exponential and (Alpha == 1 and 1 or 1 - 2 ^ (-10 * Alpha)) or EasingStyle == Enum.EasingStyle.Quad and Alpha ^ 2 or Sqrt(1 - (Alpha - 1) ^ 2)
+                    Object[Property] = StartValue + (TargetValue - StartValue) * EasedAlpha
+                end
+            end
         end
-
         for Property, TweenFunction in TweenFunctions do
             Heartbeats[#Heartbeats + 1] = TweenFunction
             Active_Tweens[Property][Object] = TweenFunction
         end
-
         task.delay(TweenDuration, function()
             for Property, TweenFunction in TweenFunctions do
                 for Index = 1, #Heartbeats do
                     if Heartbeats[Index] == TweenFunction then
                         table.remove(Heartbeats, Index)
-
                         Object[Property] = Properties[Property]
                         break
                     end
@@ -693,23 +400,24 @@ do
         end)
     end)
 end
-
-local function FadeIn(Data)
-    if Data.Fading then
+local function FadeIn(PlayerData)
+    if PlayerData.Fading then
         return
     end
-
-    Data.Fading = true
-
-    for _, Drawing in Data.Drawings do
+    PlayerData.Fading = true
+    PlayerData.FadeGen = (PlayerData.FadeGen or 0) + 1
+    local Gen = PlayerData.FadeGen
+    for _, Drawing in PlayerData.Drawings do
         if Drawing then
             Drawing.Visible = true
             Drawing.Transparency = 0
         end
     end
-
     task.delay(0.05, function()
-        for _, Drawing in Data.Drawings do
+        if PlayerData.FadeGen ~= Gen then
+            return
+        end
+        for _, Drawing in PlayerData.Drawings do
             if Drawing then
                 Tween(Drawing, {
                     Transparency = 1
@@ -717,14 +425,12 @@ local function FadeIn(Data)
             end
         end
     end)
-
-    if Data.Highlight then
-        Data.Highlight.Enabled = true
-        Data.Highlight.FillTransparency = 1
-        Data.Highlight.OutlineTransparency = 1
-
+    if PlayerData.Highlight then
+        PlayerData.Highlight.Enabled = true
+        PlayerData.Highlight.FillTransparency = 1
+        PlayerData.Highlight.OutlineTransparency = 1
         TweenService:Create(
-            Data.Highlight,
+            PlayerData.Highlight,
             TweenInfo.new(0.75, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
             {
                 FillTransparency = Alt_Information[2],
@@ -732,22 +438,26 @@ local function FadeIn(Data)
             }
         ):Play()
     end
-
     task.delay(0.3, function()
-        Data.Rendering = true
-        Data.Fading = false
+        if PlayerData.FadeGen ~= Gen then
+            return
+        end
+        PlayerData.Rendering = true
+        PlayerData.Fading = false
     end)
 end
-
-local function FadeOut(Data)
-    if Data.Fading then
+local function FadeOut(PlayerData)
+    if PlayerData.Fading then
         return
     end
-
-    Data.Fading = true
-
+    PlayerData.Fading = true
+    PlayerData.FadeGen = (PlayerData.FadeGen or 0) + 1
+    local Gen = PlayerData.FadeGen
     task.delay(0.05, function()
-        for _, Drawing in Data.Drawings do
+        if PlayerData.FadeGen ~= Gen then
+            return
+        end
+        for _, Drawing in PlayerData.Drawings do
             if Drawing then
                 Tween(Drawing, {
                     Transparency = 0
@@ -755,10 +465,9 @@ local function FadeOut(Data)
             end
         end
     end)
-
-    if Data.Highlight then
+    if PlayerData.Highlight then
         TweenService:Create(
-            Data.Highlight,
+            PlayerData.Highlight,
             TweenInfo.new(0.75, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
             {
                 FillTransparency = 1,
@@ -766,58 +475,50 @@ local function FadeOut(Data)
             }
         ):Play()
     end
-
     task.delay(0.75, function()
-        for _, Drawing in Data.Drawings do
+        if PlayerData.FadeGen ~= Gen then
+            return
+        end
+        for _, Drawing in PlayerData.Drawings do
             if Drawing then
                 Drawing.Visible = false
             end
         end
-
-        if Data.Highlight then
-            Data.Highlight.Enabled = false
+        if PlayerData.Highlight then
+            PlayerData.Highlight.Enabled = false
         end
-
-        Data.Rendering = false
-        Data.Fading = false
+        PlayerData.Rendering = false
+        PlayerData.Fading = false
     end)
 end
-
-local Create_Box = LPH_NO_VIRTUALIZE(function(Data)
-    Data.Drawings = Data.Drawings or {}
-
+local Create_Box = LPH_NO_VIRTUALIZE(function(PlayerData)
+    PlayerData.Drawings = PlayerData.Drawings or {}
     local BoxSettings = ESP.Settings.Box
-    local Colors = BoxSettings.Colors
-
-    Data.Drawings.BoxTop = Create_Drawing("Line", {
+    local BoxColors = BoxSettings.Colors
+    PlayerData.Drawings.BoxTop = Create_Drawing("Line", {
         Thickness = BoxSettings.Thickness,
-        Color = Colors.Top,
-        Visible = Data.Rendering
+        Color = BoxColors.Top,
+        Visible = PlayerData.Rendering
     })
-
-    Data.Drawings.BoxRight = Create_Drawing("Line", {
+    PlayerData.Drawings.BoxRight = Create_Drawing("Line", {
         Thickness = BoxSettings.Thickness,
-        Color = Colors.Right,
-        Visible = Data.Rendering
+        Color = BoxColors.Right,
+        Visible = PlayerData.Rendering
     })
-
-    Data.Drawings.BoxBottom = Create_Drawing("Line", {
+    PlayerData.Drawings.BoxBottom = Create_Drawing("Line", {
         Thickness = BoxSettings.Thickness,
-        Color = Colors.Bottom,
-        Visible = Data.Rendering
+        Color = BoxColors.Bottom,
+        Visible = PlayerData.Rendering
     })
-
-    Data.Drawings.BoxLeft = Create_Drawing("Line", {
+    PlayerData.Drawings.BoxLeft = Create_Drawing("Line", {
         Thickness = BoxSettings.Thickness,
-        Color = Colors.Left,
-        Visible = Data.Rendering
+        Color = BoxColors.Left,
+        Visible = PlayerData.Rendering
     })
 end)
-
-local Create_Name = LPH_NO_VIRTUALIZE(function(Data, Player)
-    Data.Drawings = Data.Drawings or {}
-
-    Data.Drawings.Name = Create_Drawing("Text", {
+local Create_Name = LPH_NO_VIRTUALIZE(function(PlayerData, Player)
+    PlayerData.Drawings = PlayerData.Drawings or {}
+    PlayerData.Drawings.Name = Create_Drawing("Text", {
         Color = ESP.Settings.Name.Color,
         Center = true,
         Outline = true,
@@ -829,240 +530,180 @@ local Create_Name = LPH_NO_VIRTUALIZE(function(Data, Player)
             Player.DisplayName .. " (@" .. Player.Name .. ")" or
             (ESP.Settings.Name.Use_Display_Name and Player.DisplayName) or
             (ESP.Settings.Name.Use_User_Name and Player.Name),
-        Visible = Data.Rendering
+        Visible = PlayerData.Rendering
     })
 end)
-
-local Create_Health_Bar = LPH_NO_VIRTUALIZE(function(Data)
-    Data.Drawings = Data.Drawings or {}
-
-    Data.Drawings.HealthBar = Create_Drawing("Square", {
+local Create_Health_Bar = LPH_NO_VIRTUALIZE(function(PlayerData)
+    PlayerData.Drawings = PlayerData.Drawings or {}
+    PlayerData.Drawings.HealthBar = Create_Drawing("Square", {
         Color = Colors[4],
         Thickness = 1,
         Filled = true,
         Transparency = Transparencies[4],
         ZIndex = 3,
-        Visible = Data.Rendering
+        Visible = PlayerData.Rendering
     })
-
-    Data.Drawings.HealthBarOutline = Create_Drawing("Square", {
+    PlayerData.Drawings.HealthBarOutline = Create_Drawing("Square", {
         Color = Colors[5],
         Thickness = 3,
         Filled = true,
         ZIndex = 2,
         Transparency = Transparencies[5],
-        Visible = Data.Rendering
+        Visible = PlayerData.Rendering
     })
-
     if ESP.Settings.Bars.Health.Gradient then
-        Data.Drawings.HealthBarGradient = Create_Drawing("Image", {
+        PlayerData.Drawings.HealthBarGradient = Create_Drawing("Image", {
             Color = Colors[6],
             Transparency = Transparencies[6],
             ZIndex = 4,
             Data = Bar_Gradient_Data,
-            Visible = Data.Rendering
+            Visible = PlayerData.Rendering
         })
     end
 end)
-
-local Update_Health_Bar = LPH_NO_VIRTUALIZE(function(Data, New_Health, Difference)
-    if math.abs(Difference) <= 1 then
-        Data.Fake_Health = New_Health
-        return
-    end
-
-    Tween(Data, {
-        Fake_Health = New_Health
-    }, "Sine", Out, 0.15)
-end)
-
-local Create_Armor_Bar = LPH_NO_VIRTUALIZE(function(Data)
-    Data.Drawings = Data.Drawings or {}
-    local Armor_ = Data.Fake_Armor
-    Data.Fake_Armor = Armor_
-
-    local Hide = not ESP.Settings.Bars.Armor.Hide_If_Empty or Data.Fake_Armor <= 0
-
-    Data.Drawings.ArmorBar = Create_Drawing("Square", {
+local Create_Armor_Bar = LPH_NO_VIRTUALIZE(function(PlayerData)
+    PlayerData.Drawings = PlayerData.Drawings or {}
+    local Hide = not ESP.Settings.Bars.Armor.Hide_If_Empty or PlayerData.Fake_Armor <= 0
+    PlayerData.Drawings.ArmorBar = Create_Drawing("Square", {
         Color = Colors[10],
         Thickness = 1,
         Filled = true,
         Transparency = Transparencies[10],
         ZIndex = 3,
-        Visible = Data.Rendering
+        Visible = PlayerData.Rendering
     })
-    Data.Drawings.ArmorBarOutline = Create_Drawing("Square", {
+    PlayerData.Drawings.ArmorBarOutline = Create_Drawing("Square", {
         Color = Colors[11],
         Thickness = 3,
         Filled = true,
         ZIndex = 2,
         Transparency = Transparencies[11],
-        Visible = Data.Rendering
+        Visible = PlayerData.Rendering
     })
-
     if Hide then
-        Data.Drawings.ArmorBar.Size = ESP.Settings.Misc.ZeroSize
-        Data.Drawings.ArmorBarOutline.Size = ESP.Settings.Misc.ZeroSize
+        PlayerData.Drawings.ArmorBar.Size = ESP.Settings.Misc.ZeroSize
+        PlayerData.Drawings.ArmorBarOutline.Size = ESP.Settings.Misc.ZeroSize
     end
-
     if ESP.Settings.Bars.Armor.Gradient then
-        Data.Drawings.ArmorBarGradient = Create_Drawing("Image", {
+        PlayerData.Drawings.ArmorBarGradient = Create_Drawing("Image", {
             Color = Colors[12],
             Transparency = Transparencies[12],
             ZIndex = 4,
             Data = Bar_Gradient_Data,
-            Visible = Data.Rendering
+            Visible = PlayerData.Rendering
         })
-
         if Hide then
-            Data.Drawings.ArmorBarGradient.Size = ESP.Settings.Misc.ZeroSize
+            PlayerData.Drawings.ArmorBarGradient.Size = ESP.Settings.Misc.ZeroSize
         end
     end
 end)
-
-local Update_Armor_Bar = LPH_NO_VIRTUALIZE(function(Data, New_Armor, Difference)
-    if ESP.Settings.Bars.Armor.Hide_If_Empty and New_Armor == 0 then
-        Data.Drawings.ArmorBar.Size = ESP.Settings.Misc.ZeroSize
-        Data.Drawings.ArmorBarOutline.Size = ESP.Settings.Misc.ZeroSize
-
-        if ESP.Settings.Bars.Armor.Gradient then
-            Data.Drawings.ArmorBarGradient.Size = ESP.Settings.Misc.ZeroSize
-        end
-
-        Data.Fake_Armor = 0
-        return
-    elseif Difference <= 1 then
-        Data.Fake_Armor = New_Armor
-        return
-    end
-    
-    Data.Fake_Armor = math.floor(New_Armor)
-end)
-
-local Create_Chams = LPH_NO_VIRTUALIZE(function(Data)
+local Create_Chams = LPH_NO_VIRTUALIZE(function(PlayerData)
     local Chams_ = {}
     local Culling_Mode = Enum.AdornCullingMode.Automatic
-
     for Index = 1, #Body_Parts do
         local Body_Part = Body_Parts[Index]
-        local Character_Part = Data.Character and Data.Character:FindFirstChild(Body_Part)
-
+        local Character_Part = PlayerData.Character and PlayerData.Character:FindFirstChild(Body_Part)
         if Character_Part then
-            Chams_[#Chams_ + 1] = Create_Instance("BoxHandleAdornment", {
-                Visible = true,
-                Adornee = Character_Part,
-                Transparency = ESP.Settings.Chams.Transparency,
-                AdornCullingMode = Culling_Mode,
-                Archivable = true,
-                Color3 = ESP.Settings.Chams.Color,
-                ZIndex = ESP.Settings.Chams.ZIndex,
-                AlwaysOnTop = true,
-                Size = Character_Part.Size + ESP.Settings.Chams.Offset,
-                Parent = CoreGui
-            })
+            Chams_[#Chams_ + 1] = {
+                Name = Body_Part,
+                Adornment = Create_Instance("BoxHandleAdornment", {
+                    Visible = true,
+                    Adornee = Character_Part,
+                    Transparency = ESP.Settings.Chams.Transparency,
+                    AdornCullingMode = Culling_Mode,
+                    Archivable = true,
+                    Color3 = ESP.Settings.Chams.Color,
+                    ZIndex = ESP.Settings.Chams.ZIndex,
+                    AlwaysOnTop = true,
+                    Size = Character_Part.Size + ESP.Settings.Chams.Offset,
+                    Parent = CoreGui
+                })
+            }
         end
     end
-
-    Data.Chams = Chams_
+    PlayerData.Chams = Chams_
 end)
-
-local Update_Chams = LPH_NO_VIRTUALIZE(function(Data)
-    for Index, Cham in Data.Chams do
-        local PartName = Body_Parts[Index]
-        local Part = Data.Character and Data.Character:FindFirstChild(PartName)
-
-        if Cham and Part then
-            Cham.Adornee = Part
-            Cham.Size = Part.Size + ESP.Settings.Chams.Offset
+local Update_Chams = LPH_NO_VIRTUALIZE(function(PlayerData)
+    for _, Entry in PlayerData.Chams do
+        if Entry and Entry.Adornment then
+            local Part = PlayerData.Character and PlayerData.Character:FindFirstChild(Entry.Name) or nil
+            if Part then
+                Entry.Adornment.Adornee = Part
+                Entry.Adornment.Size = Part.Size + ESP.Settings.Chams.Offset
+            end
         end
     end
 end)
-
-local Create_Highlight = LPH_NO_VIRTUALIZE(function(Data, Player)
-    if not Player.Character then
+local Create_Highlight = LPH_NO_VIRTUALIZE(function(PlayerData, Player)
+    local Character = Player.Character or PlayerData.Character
+    if not Character then
         return
     end
-
-    local Humanoid = Player.Character:FindFirstChildOfClass("Humanoid")
+    local Humanoid = Character:FindFirstChildOfClass("Humanoid")
     if not Humanoid then
         return
     end
-
-    Data.Highlight = Create_Instance("Highlight", {
+    PlayerData.Highlight = Create_Instance("Highlight", {
         FillColor = ESP.Settings.Highlight.FillColor,
         FillTransparency = ESP.Settings.Highlight.FillTransparency,
-        
         OutlineColor = ESP.Settings.Highlight.OutlineColor,
         OutlineTransparency = ESP.Settings.Highlight.OutlineTransparency,
         DepthMode = ESP.Settings.Highlight.DepthMode,
         Enabled = true,
-        Adornee = Player.Character,
+        Adornee = Character,
         Parent = GetHui
     })
 end)
-
-local Update_Highlight = LPH_NO_VIRTUALIZE(function(Data, Player)
-    if not Data.Highlight or not Player.Character then
+local Update_Highlight = LPH_NO_VIRTUALIZE(function(PlayerData, Player)
+    if not PlayerData.Highlight then
         return
     end
-
-    Data.Highlight.Adornee = Player.Character
+    local Character = Player.Character or PlayerData.Character
+    if not Character then
+        return
+    end
+    PlayerData.Highlight.Adornee = Character
 end)
-
-local Create_Health_Text = LPH_NO_VIRTUALIZE(function(Data)
-    Data.Drawings = Data.Drawings or {}
-
-    Data.Drawings.HealthText = Create_Drawing("Text", {
+local Create_Health_Text = LPH_NO_VIRTUALIZE(function(PlayerData)
+    PlayerData.Drawings = PlayerData.Drawings or {}
+    local Humanoid = PlayerData.Humanoid
+    local Current = Humanoid and math.floor(Humanoid.Health) or Health
+    PlayerData.Drawings.HealthText = Create_Drawing("Text", {
         Color = ESP.Settings.HealthText.Color,
         Center = false,
         Outline = true,
         Transparency = Transparencies[7],
         Size = ESP.Settings.Misc.SmallSize,
         Font = ESP.Settings.Misc.SmallFont,
-        Text = (ESP.Settings.HealthText.HideFullHealth and Health >= Max_Health or false) and "" or tostring(Health),
-        Visible = Data.Rendering
+        Text = (ESP.Settings.HealthText.HideFullHealth and Current >= Max_Health) and "" or tostring(Current),
+        Visible = PlayerData.Rendering
     })
 end)
-
-local Update_Health_Text = LPH_NO_VIRTUALIZE(function(Data, Health_)
-    Data.Drawings.HealthText.Text = (ESP.Settings.HealthText.HideFullHealth and Health_ >= Max_Health or false) and "" or tostring(Health_)
-end)
-
-local Create_Tool_Text = LPH_NO_VIRTUALIZE(function(Data)
-    Data.Drawings = Data.Drawings or {}
-
-    Data.Drawings.ToolText = Create_Drawing("Text", {
+local Create_Tool_Text = LPH_NO_VIRTUALIZE(function(PlayerData)
+    PlayerData.Drawings = PlayerData.Drawings or {}
+    PlayerData.Drawings.ToolText = Create_Drawing("Text", {
         Color = ESP.Settings.ToolText.Color,
         Center = true,
         Outline = true,
         Transparency = Transparencies[8],
         Size = ESP.Settings.Misc.SmallSize,
         Font = ESP.Settings.Misc.SmallFont,
-        Text = Tool and string.lower(Tool.Name:gsub("[^%w]", "")) or "",
-        Visible = Data.Rendering
+        Text = GetToolText(FindEquippedTool(PlayerData.Character)),
+        Visible = PlayerData.Rendering
     })
 end)
-
-local Update_Tool_Text = LPH_NO_VIRTUALIZE(function(Data, Tool_, Player)
-    if Player and ESP.Settings.ToolText.Enabled then
-        Data.Drawings.ToolText.Text = Tool_ and string.lower(Tool_.Name:gsub("[^%w]", "")) or ""
-    end
-end)
-
-local Create_Image = LPH_NO_VIRTUALIZE(function(Data)
-    Data.Drawings = Data.Drawings or {}
-
-    Data.Drawings.Image = Create_Drawing("Image", {
+local Create_Image = LPH_NO_VIRTUALIZE(function(PlayerData)
+    PlayerData.Drawings = PlayerData.Drawings or {}
+    PlayerData.Drawings.Image = Create_Drawing("Image", {
         Color = Colors[13],
         Transparency = Transparencies[13],
         Data = ESP.Settings.Image.Data == "Gradient" and Image_Data_Gradient or ESP.Settings.Image.Data == "Filled" and Image_Data_Filled or "",
         ZIndex = 4,
-        Visible = Data.Rendering
+        Visible = PlayerData.Rendering
     })
 end)
-
-local Create_Distance = LPH_NO_VIRTUALIZE(function(Data)
-    Data.Drawings.Distance = Create_Drawing("Text", {
+local Create_Distance = LPH_NO_VIRTUALIZE(function(PlayerData)
+    PlayerData.Drawings.Distance = Create_Drawing("Text", {
         Color = ESP.Settings.Distance.Color,
         Center = true,
         Outline = true,
@@ -1070,365 +711,514 @@ local Create_Distance = LPH_NO_VIRTUALIZE(function(Data)
         Font = ESP.Settings.Misc.SmallFont,
         Transparency = 1,
         Text = "",
-        Visible = Data.Rendering
+        Visible = PlayerData.Rendering
     })
 end)
-
-local Create_Tracer = LPH_NO_VIRTUALIZE(function(Data)
-    Data.Drawings.Tracer = Create_Drawing("Line", {
+local Create_Tracer = LPH_NO_VIRTUALIZE(function(PlayerData)
+    PlayerData.Drawings.Tracer = Create_Drawing("Line", {
         Color = ESP.Settings.Tracer.Color,
-        Thickness = Data.Tracer_Thickness,
-        Visible = Data.Rendering
+        Thickness = PlayerData.Tracer_Thickness,
+        Visible = PlayerData.Rendering
     })
-
     if ESP.Settings.Tracer.Outline then
-        Data.Drawings.TracerOutline = Create_Drawing("Line", {
+        PlayerData.Drawings.TracerOutline = Create_Drawing("Line", {
             Color = ESP.Settings.Tracer.OutlineColor,
-            Thickness = Data.Tracer_Outline_Thickness,
-            Visible = Data.Rendering
+            Thickness = PlayerData.Tracer_Outline_Thickness,
+            Visible = PlayerData.Rendering
         })
     end
 end)
-
-local Create_ESP = LPH_NO_VIRTUALIZE(function(Data)
+local Create_ESP = LPH_NO_VIRTUALIZE(function(PlayerData)
     if ESP.Settings.Box.Enabled then
-        Create_Box(Data)
+        Create_Box(PlayerData)
     end
     if ESP.Settings.Name.Enabled then
-        Create_Name(Data, Data.Player)
+        Create_Name(PlayerData, PlayerData.Player)
     end
     if ESP.Settings.Bars.Health.Enabled then
-        Create_Health_Bar(Data)
+        Create_Health_Bar(PlayerData)
     end
     if ESP.Settings.Bars.Armor.Enabled then
-        Create_Armor_Bar(Data)
+        Create_Armor_Bar(PlayerData)
     end
     if ESP.Settings.HealthText.Enabled then
-        Create_Health_Text(Data)
+        Create_Health_Text(PlayerData)
     end
     if ESP.Settings.ToolText.Enabled then
-        Create_Tool_Text(Data)
+        Create_Tool_Text(PlayerData)
     end
     if ESP.Settings.Image.Enabled then
-        Create_Image(Data)
+        Create_Image(PlayerData)
     end
     if ESP.Settings.Distance.Enabled then
-        Create_Distance(Data)
+        Create_Distance(PlayerData)
     end
-    if Create_Tracer then
-        Create_Tracer(Data)
+    if ESP.Settings.Tracer.Enabled then
+        Create_Tracer(PlayerData)
     end
     if ESP.Settings.Chams.Enabled then
-        Create_Chams(Data)
+        Create_Chams(PlayerData)
     end
     if ESP.Settings.Highlight.Enabled then
-        Create_Highlight(Data, Data.Player)
+        Create_Highlight(PlayerData, PlayerData.Player)
     end
 end)
-
+local function SyncConnections(PlayerData)
+    for _, Connection in PlayerData.Connections do
+        if Connection then
+            Connection:Disconnect()
+        end
+    end
+    PlayerData.Connections = {}
+    local Character = PlayerData.Character
+    local Humanoid = PlayerData.Humanoid
+    if Humanoid then
+        PlayerData.Connections.Died = Humanoid.Died:Connect(function()
+            FadeOut(PlayerData)
+        end)
+        if ESP.Settings.Bars.Health.Enabled then
+            PlayerData.Connections.Health = Humanoid.HealthChanged:Connect(function(NewHealth)
+                Update_Health_Bar(PlayerData, NewHealth, math.abs(NewHealth - PlayerData.Fake_Health))
+            end)
+        end
+        if ESP.Settings.HealthText.Enabled then
+            PlayerData.Connections.HealthText = Humanoid.HealthChanged:Connect(function(NewHealth)
+                Update_Health_Text(PlayerData, math.floor(NewHealth))
+            end)
+        end
+    end
+    if ESP.Settings.Bars.Armor.Enabled and PlayerData.ArmorValue then
+        PlayerData.Connections.Armor = PlayerData.ArmorValue:GetPropertyChangedSignal("Value"):Connect(function()
+            local NewArmor = PlayerData.ArmorValue.Value
+            Update_Armor_Bar(PlayerData, NewArmor, math.abs(NewArmor - PlayerData.Fake_Armor))
+        end)
+    end
+    if ESP.Settings.ToolText.Enabled and Character then
+        PlayerData.Connections.ToolAdded = Character.ChildAdded:Connect(function(Child)
+            if Child:IsA("Tool") then
+                Update_Tool_Text(PlayerData, Child)
+            end
+        end)
+        PlayerData.Connections.ToolRemoved = Character.ChildRemoved:Connect(function(Child)
+            if Child:IsA("Tool") then
+                Update_Tool_Text(PlayerData, FindEquippedTool(Character))
+            end
+        end)
+        Update_Tool_Text(PlayerData, FindEquippedTool(Character))
+    end
+end
+local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData)
+    if not PlayerData then
+        return
+    end
+    local Character = Player.Character
+    if not Character then
+        return
+    end
+    local Humanoid = Character:FindFirstChildOfClass("Humanoid")
+    if not Humanoid then
+        return
+    end
+    local Anchor = GetAnchor(Character)
+    local Root = Character:FindFirstChild("HumanoidRootPart")
+    if not Anchor or not Root then
+        return
+    end
+    PlayerData.Character = Character
+    PlayerData.Humanoid = Humanoid
+    PlayerData.Anchor = Anchor
+    PlayerData.Root = Root
+    local Cam = workspace.CurrentCamera or Camera
+    if not Cam then
+        return
+    end
+    local LocalCharacter = LocalPlayer.Character
+    local LocalRoot = LocalCharacter and LocalCharacter:FindFirstChild("HumanoidRootPart") or nil
+    local ScreenPos, OnScreen = Cam:WorldToViewportPoint(Anchor.Position + ESP.Settings.Misc.Offset)
+    local DistanceValue = math.huge
+    if LocalRoot then
+        DistanceValue = (LocalRoot.Position - Root.Position).Magnitude
+    end
+    local Drawings = PlayerData.Drawings
+    if ESP.Settings.DistanceLimit.Enabled and DistanceValue > ESP.Settings.DistanceLimit.MaxDistance then
+        if PlayerData.Highlight then
+            PlayerData.Highlight.Enabled = false
+        end
+        if PlayerData.Rendering then
+            for _, Drawing in Drawings do
+                Drawing.Visible = false
+            end
+            PlayerData.Rendering = false
+        end
+        return
+    end
+    if not OnScreen then
+        if PlayerData.Highlight then
+            PlayerData.Highlight.Enabled = false
+        end
+        if PlayerData.Rendering then
+            for _, Drawing in Drawings do
+                Drawing.Visible = false
+            end
+            PlayerData.Rendering = false
+        end
+        return
+    end
+    if not PlayerData.Rendering then
+        for _, Drawing in Drawings do
+            Drawing.Visible = true
+        end
+        PlayerData.Rendering = true
+    end
+    if PlayerData.Highlight then
+        PlayerData.Highlight.Adornee = Character
+        PlayerData.Highlight.Enabled = true
+    end
+    Update_Chams(PlayerData)
+    local Bottom = Cam:WorldToViewportPoint(Anchor.Position - ESP.Settings.Misc.Offset)
+    local Difference = Bottom.Y - ScreenPos.Y
+    local Height = Difference * 6
+    local Width = Difference * 4
+    local DistanceY = Height + 4
+    local MainSize = Vector2.new(Width, Height)
+    local MainPos = Vector2.new(
+        Bottom.X - Width / 2,
+        Bottom.Y - Height / 2
+    )
+    if ESP.Settings.Box.Enabled then
+        local BoxTop = Drawings.BoxTop
+        local BoxRight = Drawings.BoxRight
+        local BoxBottom = Drawings.BoxBottom
+        local BoxLeft = Drawings.BoxLeft
+        if BoxTop and BoxRight and BoxBottom and BoxLeft then
+            BoxTop.From = MainPos
+            BoxTop.To = MainPos + Vector2.new(MainSize.X, 0)
+            BoxRight.From = MainPos + Vector2.new(MainSize.X, 0)
+            BoxRight.To = MainPos + MainSize
+            BoxBottom.From = MainPos + Vector2.new(0, MainSize.Y)
+            BoxBottom.To = MainPos + MainSize
+            BoxLeft.From = MainPos
+            BoxLeft.To = MainPos + Vector2.new(0, MainSize.Y)
+            if ESP.Settings.Box.Animated then
+                local BoxColors = ESP.Settings.Box.Colors
+                local AnimatedColors = {
+                    BoxColors.Top,
+                    BoxColors.Right,
+                    BoxColors.Bottom,
+                    BoxColors.Left
+                }
+                local Time = -(tick() * ESP.Settings.Box.AnimationSpeed) % 1
+                BoxTop.Color = LerpColors(AnimatedColors, Time)
+                BoxRight.Color = LerpColors(AnimatedColors, (Time + 0.25) % 1)
+                BoxBottom.Color = LerpColors(AnimatedColors, (Time + 0.5) % 1)
+                BoxLeft.Color = LerpColors(AnimatedColors, (Time + 0.75) % 1)
+            end
+        end
+    end
+    if ESP.Settings.Image.Enabled and Drawings.Image then
+        Drawings.Image.Position = MainPos
+        Drawings.Image.Size = MainSize
+    end
+    if ESP.Settings.Distance.Enabled and Drawings.Distance then
+        if LocalRoot then
+            Drawings.Distance.Text = ("%dm"):format(math.floor(DistanceValue))
+        end
+        Drawings.Distance.Position = MainPos + Vector2.new(Width / 2, DistanceY)
+    end
+    if ESP.Settings.Tracer.Enabled and Drawings.Tracer then
+        Drawings.Tracer.From = ESP.Settings.Tracer.Origin_Position
+        Drawings.Tracer.To = Vector2.new(ScreenPos.X, ScreenPos.Y)
+        local TracerOutline = Drawings.TracerOutline
+        if TracerOutline and ESP.Settings.Tracer.Outline then
+            TracerOutline.From = Drawings.Tracer.From
+            TracerOutline.To = Drawings.Tracer.To
+        end
+    end
+    if ESP.Settings.Name.Enabled and Drawings.Name then
+        Drawings.Name.Position = MainPos + Vector2.new(Width / 2, -15)
+    end
+    if ESP.Settings.Bars.Health.Enabled and Drawings.HealthBar and Drawings.HealthBarOutline then
+        local Y_Size = Height + 2
+        Drawings.HealthBarOutline.Position = MainPos - ESP.Settings.Bars.Health.Offset
+        Drawings.HealthBarOutline.Size = Vector2.new(4, Y_Size)
+        local Health_Size = (PlayerData.Fake_Health / Max_Health) * (Y_Size - 2)
+        local Bar_Position = MainPos + Vector2.new(-5, Y_Size - Health_Size - 2)
+        local Bar_Size = Vector2.new(2, Health_Size)
+        Drawings.HealthBar.Position = Bar_Position
+        Drawings.HealthBar.Size = Bar_Size
+        local Gradient = Drawings.HealthBarGradient
+        if Gradient and ESP.Settings.Bars.Health.Gradient then
+            Gradient.Position = Bar_Position - ESP.Settings.Misc.BarOffset
+            Gradient.Size = Bar_Size + ESP.Settings.Misc.BarOffset
+            if ESP.Settings.Bars.Health.Moving_Gradient then
+                if ESP.Settings.Bars.Type == "Rainbow" then
+                    local Hue = (tick() * ESP.Settings.Bars.Speed) % 1
+                    Drawings.HealthBar.Color = Color3.fromHSV(Hue, 1, 1)
+                    Gradient.Color = Color3.fromHSV((Hue + 0.08) % 1, 1, 1)
+                elseif ESP.Settings.Bars.Type == "Gradient" then
+                    local Time = tick() * ESP.Settings.Bars.Speed
+                    local BarColors = ESP.Settings.Bars.Health.Colors
+                    local Position = (Time % 1) * (#BarColors - 1)
+                    local Section = math.floor(Position) + 1
+                    local Alpha = Position % 1
+                    local BarColor = BarColors[Section]:Lerp(BarColors[Section + 1], Alpha)
+                    Drawings.HealthBar.Color = BarColor
+                    Gradient.Color = BarColors[(Section % (#BarColors - 1)) + 1]:Lerp(
+                        BarColors[((Section + 1) % (#BarColors - 1)) + 1],
+                        Alpha
+                    )
+                elseif ESP.Settings.Bars.Type == "Solid" then
+                    local BarColors = ESP.Settings.Bars.Health.Colors
+                    local Index = math.floor((tick() * 2) % #BarColors) + 1
+                    local BarColor = BarColors[Index]
+                    Drawings.HealthBar.Color = BarColor
+                    Gradient.Color = BarColor
+                end
+            end
+        end
+    end
+    local Armor_Ignored = false
+    if ESP.Settings.Bars.Armor.Enabled and Drawings.ArmorBar and Drawings.ArmorBarOutline then
+        local Armor = PlayerData.Fake_Armor
+        if not ESP.Settings.Bars.Armor.Hide_If_Empty or Armor ~= 0 then
+            local Y_Size = Height + 2
+            Drawings.ArmorBarOutline.Position = MainPos - ESP.Settings.Bars.Armor.Offset
+            Drawings.ArmorBarOutline.Size = Vector2.new(4, Y_Size)
+            local Armor_Size = (math.clamp(Armor / 130, 0, 1)) * (Y_Size - 2)
+            local Bar_Position = MainPos + Vector2.new(-ESP.Settings.Bars.Armor.Offset.X + 1, Y_Size - Armor_Size - 2)
+            local Bar_Size = Vector2.new(2, Armor_Size)
+            Drawings.ArmorBar.Position = Bar_Position
+            Drawings.ArmorBar.Size = Bar_Size
+            local Gradient = Drawings.ArmorBarGradient
+            if Gradient and ESP.Settings.Bars.Armor.Gradient then
+                Gradient.Position = Bar_Position - ESP.Settings.Misc.BarOffset
+                Gradient.Size = Bar_Size + ESP.Settings.Misc.BarOffset
+                if ESP.Settings.Bars.Armor.Moving_Gradient then
+                    if ESP.Settings.Bars.Type == "Rainbow" then
+                        local Time = (tick() * ESP.Settings.Bars.Speed) % 1
+                        Drawings.ArmorBar.Color = Color3.fromHSV(Time % 1, 1, 1)
+                        Gradient.Color = Color3.fromHSV((Time + 0.08) % 1, 1, 1)
+                    elseif ESP.Settings.Bars.Type == "Gradient" then
+                        local Time = tick() * ESP.Settings.Bars.Speed
+                        local BarColors = ESP.Settings.Bars.Armor.Colors
+                        local Position = (Time % 1) * (#BarColors - 1)
+                        local Section = math.floor(Position) + 1
+                        local Alpha = Position % 1
+                        local BarColor = BarColors[Section]:Lerp(BarColors[Section + 1], Alpha)
+                        Drawings.ArmorBar.Color = BarColor
+                        Gradient.Color = BarColors[(Section % (#BarColors - 1)) + 1]:Lerp(
+                            BarColors[((Section + 1) % (#BarColors - 1)) + 1],
+                            Alpha
+                        )
+                    elseif ESP.Settings.Bars.Type == "Solid" then
+                        local BarColors = ESP.Settings.Bars.Armor.Colors
+                        local Index = math.floor((tick() * 2) % #BarColors) + 1
+                        local BarColor = BarColors[Index]
+                        Drawings.ArmorBar.Color = BarColor
+                        Gradient.Color = BarColor
+                    end
+                end
+            end
+        else
+            Armor_Ignored = true
+        end
+    end
+    if ESP.Settings.HealthText.Enabled and Drawings.HealthText then
+        Drawings.HealthText.Position = MainPos - (Armor_Ignored and ESP.Settings.HealthText.NormalOffset or ESP.Settings.HealthText.Offset) - Vector2.new(Drawings.HealthText.TextBounds.X, 0)
+    end
+    if ESP.Settings.ToolText.Enabled and Drawings.ToolText then
+        local Y = Height + 2
+        if ESP.Settings.Distance.Enabled then
+            Y = Height + 16
+        end
+        Drawings.ToolText.Position = MainPos + Vector2.new(Width / 2, Y)
+    end
+end)
+local Update_ESP = LPH_NO_VIRTUALIZE(function()
+    for Player, PlayerData in Data do
+        pcall(RenderPlayer, Player, PlayerData)
+    end
+end)
 RunService.Heartbeat:Connect(function()
     for _, Player in Players:GetPlayers() do
         if Player ~= LocalPlayer and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
             local Character = Player.Character
             local Humanoid = Character:FindFirstChildOfClass("Humanoid")
-            if not Humanoid then
-                continue
-            end
-            
-            local BodyEffects = Character:FindFirstChild("BodyEffects") or nil
-            local BodyArmor = nil
-            if BodyEffects then
-                BodyArmor = BodyEffects and BodyEffects:FindFirstChild("Armor")
-            end
-
-            local PlayerData = Data[Player]    
-            if not PlayerData then
-                PlayerData = {
-                    Player = Player,
-                
-                    Character = Character,
-                    Humanoid = Humanoid,
-                    UpperTorso = Character:FindFirstChild("UpperTorso"),
-                    Root = Character:FindFirstChild("HumanoidRootPart"),
-
-                    ArmorValue = BodyArmor,
-                
-                    Fake_Health = Humanoid.Health,
-                    Fake_Armor = BodyArmor and BodyArmor.Value or 0,
-                
-                    Tracer_Thickness = 2,
-                    Tracer_Outline_Thickness = 1,
-
-                    Hide_Tags = false,
-
-                    Rendering = false,
-                    Fading = false,
-                
-                    Drawings = {},
-                    Chams = {},
-                
-                    Connections = {},
-                
-                    Cache = {}
-                }
-    
-                Data[Player] = PlayerData
-    
-                Create_ESP(PlayerData)
-                FadeIn(PlayerData)
-
-                if ESP.Settings.Character.Hide_Tags then
-                    local Hide_Tags = LPH_NO_VIRTUALIZE(function()
-                        local Humanoid = PlayerData.Humanoid
-
-                        if Humanoid then
-                            Humanoid.DisplayName = "‎"
-                            Humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+            if Humanoid then
+                if not Data[Player] then
+                    local ArmorValue = GetArmorValue(Character)
+                    local PlayerData = {
+                        Player = Player,
+                        Character = Character,
+                        Humanoid = Humanoid,
+                        Anchor = GetAnchor(Character),
+                        Root = Character:FindFirstChild("HumanoidRootPart"),
+                        ArmorValue = ArmorValue,
+                        Fake_Health = Humanoid.Health,
+                        Fake_Armor = ArmorValue and ArmorValue.Value or 0,
+                        Tracer_Thickness = 2,
+                        Tracer_Outline_Thickness = 1,
+                        Rendering = false,
+                        Fading = false,
+                        FadeGen = 0,
+                        Drawings = {},
+                        Chams = {},
+                        Connections = {},
+                        RespawnConnection = nil,
+                    }
+                    Data[Player] = PlayerData
+                    Create_ESP(PlayerData)
+                    SyncConnections(PlayerData)
+                    HidePlayerTags(PlayerData)
+                    PlayerData.RespawnConnection = Player.CharacterAdded:Connect(function(NewCharacter)
+                        local NewHumanoid = NewCharacter:WaitForChild("Humanoid", 5)
+                        local NewRoot = NewCharacter:WaitForChild("HumanoidRootPart", 5)
+                        if not NewHumanoid or not NewRoot then
+                            return
                         end
+                        PlayerData.Character = NewCharacter
+                        PlayerData.Humanoid = NewHumanoid
+                        PlayerData.Anchor = GetAnchor(NewCharacter)
+                        PlayerData.Root = NewRoot
+                        PlayerData.ArmorValue = GetArmorValue(NewCharacter)
+                        PlayerData.Fake_Health = NewHumanoid.Health
+                        PlayerData.Fake_Armor = PlayerData.ArmorValue and PlayerData.ArmorValue.Value or 0
+                        SyncConnections(PlayerData)
+                        HidePlayerTags(PlayerData)
+                        FadeIn(PlayerData)
                     end)
-
-                    PlayerData.Connections.NameTags =
-                        PlayerData.Player.CharacterAdded:Connect(function()
-                            PlayerData.Fake_Health = PlayerData.Humanoid.Health
-                            PlayerData.Fake_Armor = 0
-
-                            Hide_Tags()
-                        end)
-
-                    Hide_Tags()
-                end
-
-                PlayerData.Connections.Died =
-                    Humanoid.Died:Connect(function()
-                        FadeOut(PlayerData)
-                    end)
-
-                if ESP.Settings.Bars.Health.Enabled then
-                    PlayerData.Connections.Health =
-                        PlayerData.Humanoid.HealthChanged:Connect(function(NewHealth)
-                            Update_Health_Bar(
-                                PlayerData,
-                                NewHealth,
-                                math.abs(NewHealth - PlayerData.Fake_Health)
-                            )
-                        end)
-                end
-                
-                if ESP.Settings.HealthText.Enabled then
-                    PlayerData.Connections.HealthText =
-                        PlayerData.Humanoid.HealthChanged:Connect(function(NewHealth)
-                            Update_Health_Text(PlayerData,
-                                math.floor(NewHealth)
-                            )
-                        end)
-                end
-                
-                if ESP.Settings.Bars.Armor.Enabled and PlayerData.ArmorValue then
-                    PlayerData.Connections.Armor =
-                        PlayerData.ArmorValue:GetPropertyChangedSignal("Value"):Connect(function()
-                            local NewArmor = PlayerData.ArmorValue.Value
-                            Update_Armor_Bar(
-                                PlayerData,
-                                NewArmor,
-                                math.abs(NewArmor - PlayerData.Fake_Armor)
-                            )
-                        end)
-                end
-                
-                if ESP.Settings.ToolText.Enabled then
-                    PlayerData.Connections.ToolText =
-                        PlayerData.Character.ChildAdded:Connect(function(Child)
-                            if Child:IsA("Tool") then
-                                Update_Tool_Text(PlayerData, Child, Player)
-                            end
-                        end)
-
-                    for _, Child in pairs(PlayerData.Character:GetChildren()) do
-                        if Child:IsA("Tool") then
-                            Update_Tool_Text(PlayerData, Child, Player)
-                        end
-                    end
-                end
-                
-                if ESP.Settings.Chams.Enabled then
-                    Update_Chams(PlayerData)
-                end
-                
-                if ESP.Settings.Highlight.Enabled then
-                    Update_Highlight(PlayerData, Player)
+                    FadeIn(PlayerData)
                 end
             end
-
-            PlayerData.Character = Character
-            PlayerData.Humanoid = Humanoid
-            PlayerData.UpperTorso = Character:FindFirstChild("UpperTorso")
-            PlayerData.Root = Character:FindFirstChild("HumanoidRootPart")
-            if not table.find(Heartbeats, Update_ESP) then
-                Heartbeats[#Heartbeats + 1] = Update_ESP
-            end
-       end
+        end
+    end
+    if not UpdateQueued then
+        UpdateQueued = true
+        Heartbeats[#Heartbeats + 1] = Update_ESP
     end
 end)
-
 RunService.Heartbeat:Connect(function()
-   for Index = 1, #Heartbeats do
-        Heartbeats[Index]()
+    for Index = 1, #Heartbeats do
+        pcall(Heartbeats[Index])
     end
 end)
-
 UserInputService.InputChanged:Connect(function(Input)
     if Input.UserInputType == Enum.UserInputType.MouseMovement and ESP.Settings.Tracer.Origin == "Mouse" then
         ESP.Settings.Tracer.Origin_Position = GetOrigin()
     end
 end)
-
 Players.PlayerRemoving:Connect(function(Player)
     local PlayerData = Data[Player]
-
     if not PlayerData then
         return
     end
-
     PlayerData.Character = nil
     FadeOut(PlayerData)
-
     task.delay(0.8, function()
         if not Data[Player] then
             return
         end
-
         for _, Connection in PlayerData.Connections do
             if Connection then
                 Connection:Disconnect()
             end
         end
-
+        if PlayerData.RespawnConnection then
+            PlayerData.RespawnConnection:Disconnect()
+        end
         for _, Drawing in PlayerData.Drawings do
             if Drawing then
                 Drawing:Remove()
             end
         end
-
-        for _, Cham in PlayerData.Chams do
-            if Cham then
-                Cham:Destroy()
+        for _, Entry in PlayerData.Chams do
+            if Entry and Entry.Adornment then
+                Entry.Adornment:Destroy()
             end
         end
-
         if PlayerData.Highlight then
             PlayerData.Highlight:Destroy()
         end
-
         Data[Player] = nil
     end)
 end)
-
-Players.PlayerAdded:Connect(function(Player)
-    Player.CharacterAdded:Connect(function(Character)
-        local PlayerData = Data[Player]
-
-        if PlayerData then
-            PlayerData.Character = Character
-            PlayerData.Humanoid = Character:WaitForChild("Humanoid")
-            PlayerData.Root = Character:WaitForChild("HumanoidRootPart")
-
-            PlayerData.Fake_Health = PlayerData.Humanoid.Health
-            PlayerData.Fake_Armor = 0
-
-            if ESP.Settings.Chams.Enabled then
-                Update_Chams(PlayerData)
-            end
-
-            if ESP.Settings.Highlight.Enabled then
-                Update_Highlight(PlayerData, Player)
-            end
-
-            FadeIn(PlayerData)
-        end
-    end)
-end)
-
------------------
 function ESP:Refresh()
     for Player, PlayerData in pairs(Data) do
         local WasRendering = PlayerData.Rendering
-
         local OldDrawings = PlayerData.Drawings
         local OldChams = PlayerData.Chams
         local OldHighlight = PlayerData.Highlight
-
         PlayerData.Drawings = {}
         PlayerData.Chams = {}
         PlayerData.Highlight = nil
-
+        local Character = Player.Character or PlayerData.Character
+        if Character then
+            PlayerData.Character = Character
+            PlayerData.Humanoid = Character:FindFirstChildOfClass("Humanoid") or PlayerData.Humanoid
+            PlayerData.Anchor = GetAnchor(Character)
+            PlayerData.Root = Character:FindFirstChild("HumanoidRootPart")
+            PlayerData.ArmorValue = GetArmorValue(Character)
+            if PlayerData.Humanoid then
+                PlayerData.Fake_Health = PlayerData.Humanoid.Health
+            end
+            PlayerData.Fake_Armor = PlayerData.ArmorValue and PlayerData.ArmorValue.Value or 0
+        end
         Create_ESP(PlayerData)
-
+        SyncConnections(PlayerData)
         PlayerData.Rendering = WasRendering
-
         for _, Drawing in pairs(OldDrawings) do
             if Drawing then
                 Drawing:Remove()
             end
         end
-
-        for _, Cham in pairs(OldChams) do
-            if Cham then
-                Cham:Destroy()
+        for _, Entry in pairs(OldChams) do
+            if Entry and Entry.Adornment then
+                Entry.Adornment:Destroy()
             end
         end
-
         if OldHighlight then
             OldHighlight:Destroy()
         end
     end
 end
-
 function ESP:Update_ESP_Color()
     for Player, PlayerData in pairs(Data) do
         local Drawings = PlayerData.Drawings
-
         if Drawings then
             if Drawings.Name then
                 Drawings.Name.Color = ESP.Settings.Name.Color
             end
-
             if Drawings.BoxTop then
                 Drawings.BoxTop.Color = ESP.Settings.Box.Colors.Top
                 Drawings.BoxRight.Color = ESP.Settings.Box.Colors.Right
                 Drawings.BoxBottom.Color = ESP.Settings.Box.Colors.Bottom
                 Drawings.BoxLeft.Color = ESP.Settings.Box.Colors.Left
             end
-
             if Drawings.Distance then
                 Drawings.Distance.Color = ESP.Settings.Distance.Color
             end
-
             if Drawings.ToolText then
                 Drawings.ToolText.Color = ESP.Settings.ToolText.Color
             end
-
             if Drawings.HealthText then
                 Drawings.HealthText.Color = ESP.Settings.HealthText.Color
             end
-
             if Drawings.Tracer then
                 Drawings.Tracer.Color = ESP.Settings.Tracer.Color
             end
-
             if Drawings.TracerOutline then
                 Drawings.TracerOutline.Color = ESP.Settings.Tracer.OutlineColor
             end
         end
-
         if PlayerData.Chams then
-            for _, Cham in pairs(PlayerData.Chams) do
+            for _, Entry in pairs(PlayerData.Chams) do
+                local Cham = Entry and Entry.Adornment or nil
                 if Cham then
                     Cham.Color3 = ESP.Settings.Chams.Color
                     Cham.Transparency = ESP.Settings.Chams.Transparency
                 end
             end
         end
-
         if PlayerData.Highlight then
             PlayerData.Highlight.FillColor = ESP.Settings.Highlight.FillColor
             PlayerData.Highlight.OutlineColor = ESP.Settings.Highlight.OutlineColor
@@ -1437,7 +1227,6 @@ function ESP:Update_ESP_Color()
         end
     end
 end
-
 function ESP:Configure(Config)
     local function Merge(Target, Source)
         for Index, Value in pairs(Source) do
@@ -1448,9 +1237,7 @@ function ESP:Configure(Config)
             end
         end
     end
-
     local ColorOnly = true
-
     local function CheckColorOnly(Table)
         for Key, Value in pairs(Table) do
             if type(Value) == "table" then
@@ -1461,21 +1248,16 @@ function ESP:Configure(Config)
                 return false
             end
         end
-
         return true
     end
-
     if not CheckColorOnly(Config) then
         ColorOnly = false
     end
-
     Merge(self.Settings, Config)
-
     if ColorOnly then
         self:Update_ESP_Color()
     else
         self:Refresh()
     end
 end
------------------
 return ESP
