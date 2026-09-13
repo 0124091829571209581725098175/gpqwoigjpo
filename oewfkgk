@@ -506,16 +506,21 @@ local function FadeIn(PlayerData)
     end)
     if PlayerData.Highlight then
         PlayerData.Highlight.Enabled = true
-        PlayerData.Highlight.FillTransparency = 1
-        PlayerData.Highlight.OutlineTransparency = 1
-        TweenService:Create(
-            PlayerData.Highlight,
-            TweenInfo.new(0.75, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-            {
-                FillTransparency = Alt_Information[2],
-                OutlineTransparency = Alt_Information[4]
-            }
-        ):Play()
+        if PlayerData.Player == LocalPlayer then
+            PlayerData.Highlight.FillTransparency = Alt_Information[2]
+            PlayerData.Highlight.OutlineTransparency = Alt_Information[4]
+        else
+            PlayerData.Highlight.FillTransparency = 1
+            PlayerData.Highlight.OutlineTransparency = 1
+            TweenService:Create(
+                PlayerData.Highlight,
+                TweenInfo.new(0.75, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                {
+                    FillTransparency = Alt_Information[2],
+                    OutlineTransparency = Alt_Information[4]
+                }
+            ):Play()
+        end
     end
     task.delay(0.3, function()
         if PlayerData.FadeGen ~= Gen then
@@ -929,6 +934,15 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData, Now)
     if not Anchor or not Root then
         return
     end
+    local AnchorPos = Anchor.Position
+    local RootPos = Root.CFrame.Position
+    if Player == LocalPlayer then
+        local CP = getgenv().PhowgClientPos
+        if CP and typeof(CP) == "CFrame" then
+            RootPos = CP.Position
+            AnchorPos = CP.Position + (Anchor.Name == "Torso" and Vector3.new(0, 1.5, 0) or Vector3.new(0, 2, 0))
+        end
+    end
     PlayerData.Character = Character
     PlayerData.Humanoid = Humanoid
     PlayerData.Anchor = Anchor
@@ -937,8 +951,9 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData, Now)
     if not Cam then
         return
     end
-    local ScreenPos, OnScreen = Cam:WorldToViewportPoint(Anchor.Position + ESP.Settings.Misc.Offset)
-    local DistanceValue = (Cam.CFrame.Position - Root.Position).Magnitude
+    local ScreenPos, OnScreen = Cam:WorldToViewportPoint(AnchorPos + ESP.Settings.Misc.Offset)
+    local realPos = getgenv().PhowgClientPos and getgenv().PhowgClientPos.Position or Cam.CFrame.Position
+    local DistanceValue = (realPos - RootPos).Magnitude
     local Drawings = PlayerData.Drawings
     if ESP.Settings.DistanceLimit.Enabled and DistanceValue > ESP.Settings.DistanceLimit.MaxDistance then
         if PlayerData.Highlight then
@@ -980,7 +995,7 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData, Now)
         PlayerData.ChamsChar = Character
         Update_Chams(PlayerData)
     end
-    local Bottom = Cam:WorldToViewportPoint(Anchor.Position - ESP.Settings.Misc.Offset)
+    local Bottom = Cam:WorldToViewportPoint(AnchorPos - ESP.Settings.Misc.Offset)
     local Difference = Bottom.Y - ScreenPos.Y
     local Height = Difference * 6
     local Width = Difference * 4
@@ -1454,6 +1469,11 @@ function ESP:Configure(Config)
         self:Update_ESP_Color()
     else
         self:Refresh()
+    end
+end
+function ESP:FadeAll()
+    for _, PlayerData in pairs(Data) do
+        pcall(FadeIn, PlayerData)
     end
 end
 ESP._Cleanup = function()
