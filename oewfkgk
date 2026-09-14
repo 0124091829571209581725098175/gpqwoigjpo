@@ -122,6 +122,7 @@ ESP.Settings = {
     },
     WeaponIcon = {
         Enabled = false,
+        Color = Color3.fromRGB(255,255,255),
     },
     HealthText = {
         Enabled = false,
@@ -793,7 +794,7 @@ local Create_WeaponIcon = LPH_NO_VIRTUALIZE(function(PlayerData)
     PlayerData.Drawings = PlayerData.Drawings or {}
     PlayerData.IconKey = nil
     PlayerData.Drawings.WeaponIcon = Create_Drawing("Image", {
-        Color = Color3.fromRGB(255, 255, 255),
+        Color = ESP.Settings.WeaponIcon.Color,
         Transparency = 1,
         Data = "",
         Visible = false
@@ -1238,8 +1239,16 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData, Now)
     end
     local Armor_Ignored = false
     if ESP.Settings.Bars.Armor.Enabled and Drawings.ArmorBar and Drawings.ArmorBarOutline then
+        local LiveArmor = GetArmorValue(Character)
+        if LiveArmor ~= PlayerData.ArmorValue then
+            PlayerData.ArmorValue = LiveArmor
+            PlayerData.Fake_Armor = LiveArmor and LiveArmor.Value or 0
+            SyncConnections(PlayerData)
+        end
         local Armor = PlayerData.Fake_Armor
         if not ESP.Settings.Bars.Armor.Hide_If_Empty or Armor ~= 0 then
+            Drawings.ArmorBar.Visible = true
+            Drawings.ArmorBarOutline.Visible = true
             local Y_Size = Height + 2
             Drawings.ArmorBarOutline.Position = MainPos + Vector2.new(Width + 2, -ESP.Settings.Bars.Armor.Offset.Y)
             if not SameFrame then
@@ -1255,6 +1264,7 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData, Now)
             end
             local Gradient = Drawings.ArmorBarGradient
             if Gradient and ESP.Settings.Bars.Armor.Gradient then
+                Gradient.Visible = true
                 Gradient.Position = Bar_Position - ESP.Settings.Misc.BarOffset
                 Gradient.Size = Bar_Size + ESP.Settings.Misc.BarOffset
                 if ESP.Settings.Bars.Armor.Moving_Gradient then
@@ -1285,6 +1295,10 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData, Now)
             end
         else
             Armor_Ignored = true
+            Drawings.ArmorBar.Visible = false
+            Drawings.ArmorBarOutline.Visible = false
+            local ArmorGrad = Drawings.ArmorBarGradient
+            if ArmorGrad then ArmorGrad.Visible = false end
         end
     end
     if ESP.Settings.HealthText.Enabled and Drawings.HealthText then
@@ -1311,6 +1325,7 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData, Now)
             if PlayerData.IconKey ~= nil then
                 local IconHeight = math.clamp(math.floor(Height * 0.1), 12, 22)
                 local IconWidth = IconHeight * 2
+                Icon.Color = ESP.Settings.WeaponIcon.Color
                 Icon.Size = Vector2.new(IconWidth, IconHeight)
                 Icon.Position = MainPos + Vector2.new(Width / 2 - IconWidth / 2, BelowY)
                 Icon.Visible = true
@@ -1554,6 +1569,9 @@ function ESP:Update_ESP_Color()
             end
             if Drawings.ToolText then
                 Drawings.ToolText.Color = ESP.Settings.ToolText.Color
+            end
+            if Drawings.WeaponIcon then
+                Drawings.WeaponIcon.Color = ESP.Settings.WeaponIcon.Color
             end
             if Drawings.HealthText then
                 Drawings.HealthText.Color = ESP.Settings.HealthText.Color
