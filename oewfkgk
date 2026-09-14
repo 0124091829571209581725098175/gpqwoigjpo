@@ -1015,13 +1015,6 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData, Now)
     end
     local AnchorPos = Anchor.Position
     local RootPos = Root.CFrame.Position
-    if Player == LocalPlayer then
-        local CP = getgenv().PhowgClientPos
-        if CP and typeof(CP) == "CFrame" then
-            RootPos = CP.Position
-            AnchorPos = CP.Position + (Anchor.Name == "Torso" and Vector3.new(0, 1.5, 0) or Vector3.new(0, 2, 0))
-        end
-    end
     PlayerData.Character = Character
     PlayerData.Humanoid = Humanoid
     PlayerData.Anchor = Anchor
