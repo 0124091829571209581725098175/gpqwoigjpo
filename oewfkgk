@@ -133,6 +133,7 @@ ESP.Settings = {
     Crew = {
         Enabled = false,
         Color = Color3.fromRGB(255,255,255),
+        Count = false,
     },
     DistanceLimit = {
         Enabled = false,
@@ -149,6 +150,8 @@ ESP.Settings = {
     }
 }
 ESP.CrewNames = ESP.CrewNames or {}
+ESP.CrewIds = ESP.CrewIds or {}
+ESP.CrewIcons = ESP.CrewIcons or {}
 local Data = {}
 local Transparencies = {
     [1] = 1,
@@ -815,6 +818,16 @@ local Create_Crew = LPH_NO_VIRTUALIZE(function(PlayerData)
         Data = Crew_Icon_Data or "",
         Visible = false
     })
+    PlayerData.Drawings.CrewCount = Create_Drawing("Text", {
+        Color = ESP.Settings.Crew.Color,
+        Center = true,
+        Outline = true,
+        Transparency = 1,
+        Size = ESP.Settings.Misc.SmallSize,
+        Font = ESP.Settings.Misc.SmallFont,
+        Text = "",
+        Visible = false
+    })
 end)
 local Create_Image = LPH_NO_VIRTUALIZE(function(PlayerData)
     PlayerData.Drawings = PlayerData.Drawings or {}
@@ -961,15 +974,42 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData, Now)
     end
     local Character = Player.Character
     if not Character then
+        if PlayerData.Highlight then
+            PlayerData.Highlight.Enabled = false
+        end
+        if PlayerData.Rendering then
+            for _, Drawing in PlayerData.Drawings do
+                Drawing.Visible = false
+            end
+            PlayerData.Rendering = false
+        end
         return
     end
     local Humanoid = Character:FindFirstChildOfClass("Humanoid")
     if not Humanoid then
+        if PlayerData.Highlight then
+            PlayerData.Highlight.Enabled = false
+        end
+        if PlayerData.Rendering then
+            for _, Drawing in PlayerData.Drawings do
+                Drawing.Visible = false
+            end
+            PlayerData.Rendering = false
+        end
         return
     end
     local Anchor = GetAnchor(Character)
     local Root = Character:FindFirstChild("HumanoidRootPart")
     if not Anchor or not Root then
+        if PlayerData.Highlight then
+            PlayerData.Highlight.Enabled = false
+        end
+        if PlayerData.Rendering then
+            for _, Drawing in PlayerData.Drawings do
+                Drawing.Visible = false
+            end
+            PlayerData.Rendering = false
+        end
         return
     end
     local AnchorPos = Anchor.Position
@@ -1096,12 +1136,20 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData, Now)
     if ESP.Settings.Name.Enabled and Drawings.Name then
         Drawings.Name.Position = MainPos + Vector2.new(Width / 2, -15)
     end
-    if ESP.Settings.Crew.Enabled and Drawings.CrewText and Drawings.CrewIcon then
+    if ESP.Settings.Crew and ESP.Settings.Crew.Enabled and Drawings.CrewText and Drawings.CrewIcon then
         local CrewName = ESP.CrewNames and ESP.CrewNames[Player] or nil
         if type(CrewName) ~= "string" or #CrewName == 0 then CrewName = nil end
         if CrewName ~= PlayerData.CrewKey then
             PlayerData.CrewKey = CrewName
             Drawings.CrewText.Text = CrewName or ""
+        end
+        local CrewId = ESP.CrewIds and ESP.CrewIds[Player] or nil
+        local RawIcon = CrewId and ESP.CrewIcons and ESP.CrewIcons[CrewId] or nil
+        if type(RawIcon) ~= "string" or #RawIcon < 100 then RawIcon = nil end
+        local IconKey = tostring(CrewId or "") .. "|" .. (RawIcon and "1" or "0")
+        if IconKey ~= PlayerData.CrewIconKey then
+            PlayerData.CrewIconKey = IconKey
+            Drawings.CrewIcon.Data = RawIcon or Crew_Icon_Data or ""
         end
         if CrewName then
             local CrewX = MainPos.X + Width / 2
@@ -1111,17 +1159,34 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData, Now)
             Drawings.CrewText.Visible = true
             local TextW = Drawings.CrewText.TextBounds.X
             local IconSize = 12
+            local IconX = CrewX - TextW / 2 - IconSize - 3
             Drawings.CrewIcon.Size = Vector2.new(IconSize, IconSize)
-            Drawings.CrewIcon.Position = Vector2.new(CrewX - TextW / 2 - IconSize - 3, CrewY - 1)
+            Drawings.CrewIcon.Position = Vector2.new(IconX, CrewY - 1)
             Drawings.CrewIcon.Color = ESP.Settings.Crew.Color
             Drawings.CrewIcon.Visible = true
+            if ESP.Settings.Crew.Count and Drawings.CrewCount then
+                local CrewN = CrewId and ESP.CrewCounts and ESP.CrewCounts[CrewId] or nil
+                if type(CrewN) == "number" and CrewN > 0 then
+                    Drawings.CrewCount.Text = tostring(CrewN)
+                    Drawings.CrewCount.Color = ESP.Settings.Crew.Color
+                    local CountW = Drawings.CrewCount.TextBounds.X
+                    Drawings.CrewCount.Position = Vector2.new(IconX - CountW - 3, CrewY)
+                    Drawings.CrewCount.Visible = true
+                elseif Drawings.CrewCount then
+                    Drawings.CrewCount.Visible = false
+                end
+            elseif Drawings.CrewCount then
+                Drawings.CrewCount.Visible = false
+            end
         else
             Drawings.CrewText.Visible = false
             Drawings.CrewIcon.Visible = false
+            if Drawings.CrewCount then Drawings.CrewCount.Visible = false end
         end
     elseif Drawings.CrewText then
         Drawings.CrewText.Visible = false
         if Drawings.CrewIcon then Drawings.CrewIcon.Visible = false end
+        if Drawings.CrewCount then Drawings.CrewCount.Visible = false end
     end
     if ESP.Settings.Bars.Health.Enabled and Drawings.HealthBar and Drawings.HealthBarOutline then
         local Y_Size = Height + 2
@@ -1288,6 +1353,9 @@ local function UntrackPlayer(Player)
     Data[Player] = nil
     if ESP.CrewNames then
         ESP.CrewNames[Player] = nil
+    end
+    if ESP.CrewIds then
+        ESP.CrewIds[Player] = nil
     end
     for _, Connection in PlayerData.Connections do
         if Connection then
@@ -1495,6 +1563,9 @@ function ESP:Update_ESP_Color()
             end
             if Drawings.CrewIcon then
                 Drawings.CrewIcon.Color = ESP.Settings.Crew.Color
+            end
+            if Drawings.CrewCount then
+                Drawings.CrewCount.Color = ESP.Settings.Crew.Color
             end
             if Drawings.Tracer then
                 Drawings.Tracer.Color = ESP.Settings.Tracer.Color
