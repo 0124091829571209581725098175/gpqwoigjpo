@@ -130,6 +130,10 @@ ESP.Settings = {
         HideFullHealth = false,
         Color = Color3.fromRGB(255,255,255),
     },
+    Crew = {
+        Enabled = false,
+        Color = Color3.fromRGB(255,255,255),
+    },
     DistanceLimit = {
         Enabled = false,
         MaxDistance = 1000,
@@ -144,6 +148,7 @@ ESP.Settings = {
         SmallSize = identifyexecutor() == "Wave" and 13 or 11,
     }
 }
+ESP.CrewNames = ESP.CrewNames or {}
 local Data = {}
 local Transparencies = {
     [1] = 1,
@@ -214,6 +219,7 @@ local Body_Parts = {
 local Bar_Gradient_Data = base64_decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAACACAYAAADK+QP0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAACUSURBVChTbVHRFQMhDFLjEA7T/ecqoXBRe3woJIjm2dZanwH0XLABIyLEDLJdls+ypYznmCxkB2Q22GUMa+wmAUPcLr1gy+JbA9gZfWQV5RoujWhnCrtjzDnVsLkWvpRRnPeyUNZslLooxSMvVvIKUCggn3HdoQFL5v4LBd7yCDUqwGcrhVCe8efzw6+U3WKcX9H7F7u/BOHzO9gQAAAAAElFTkSuQmCC")
 local Image_Data_Gradient = base64_decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAABkCAYAAABHLFpgAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAABTSURBVChTdU/LDsAwCGJu1/3/59rUC5HAhaA8bNHdfwF4LrwbagN3wgakwMVc4ttCTLhxmKjOIma5S5VfiC0TE180R8aRIAJvuJfGGHcsoHoZ6gCUSgTCpTUDpwAAAABJRU5ErkJggg==")
 local Image_Data_Filled = base64_decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAMSURBVBhXY/j//z8ABf4C/qc1gYQAAAAASUVORK5CYII=")
+local Crew_Icon_Data = base64_decode("iVBORw0KGgoAAAANSUhEUgAAABYAAAAWCAYAAADEtGw7AAAASklEQVR4nN3TWwoAIAhEUfe/6WkDFeNjyLzg70HCDIApxsbDqIZ3peFb/WCmXhtLYdlVyO74rzdmcsOeaDjSOzjTEUZBoQ9CjwxeGjAzIuBJZBQAAAAASUVORK5CYII=")
 local function LerpColors(ColorList, Offset)
     local Index = math.floor(Offset * #ColorList) + 1
     local NextIndex = (Index % #ColorList) + 1
@@ -388,7 +394,9 @@ local Update_Health_Text = LPH_NO_VIRTUALIZE(function(PlayerData, Health_)
     if not TextDrawing then
         return
     end
-    TextDrawing.Text = (ESP.Settings.HealthText.HideFullHealth and Health_ >= Max_Health) and "" or tostring(Health_)
+    local MaxHP = PlayerData.Fake_MaxHealth
+    if not MaxHP or MaxHP <= 0 then MaxHP = Max_Health end
+    TextDrawing.Text = (ESP.Settings.HealthText.HideFullHealth and Health_ >= MaxHP) and "" or tostring(Health_)
 end)
 local Update_Tool_Text = LPH_NO_VIRTUALIZE(function(PlayerData, ToolInstance)
     local TextDrawing = PlayerData.Drawings.ToolText
@@ -752,6 +760,8 @@ local Create_Health_Text = LPH_NO_VIRTUALIZE(function(PlayerData)
     PlayerData.Drawings = PlayerData.Drawings or {}
     local Humanoid = PlayerData.Humanoid
     local Current = Humanoid and math.floor(Humanoid.Health) or Health
+    local CurrentMax = Humanoid and Humanoid.MaxHealth or Max_Health
+    if not CurrentMax or CurrentMax <= 0 then CurrentMax = Max_Health end
     PlayerData.Drawings.HealthText = Create_Drawing("Text", {
         Color = ESP.Settings.HealthText.Color,
         Center = false,
@@ -759,7 +769,7 @@ local Create_Health_Text = LPH_NO_VIRTUALIZE(function(PlayerData)
         Transparency = Transparencies[7],
         Size = ESP.Settings.Misc.SmallSize,
         Font = ESP.Settings.Misc.SmallFont,
-        Text = (ESP.Settings.HealthText.HideFullHealth and Current >= Max_Health) and "" or tostring(Current),
+        Text = (ESP.Settings.HealthText.HideFullHealth and Current >= CurrentMax) and "" or tostring(Current),
         Visible = PlayerData.Rendering
     })
 end)
@@ -783,6 +793,26 @@ local Create_WeaponIcon = LPH_NO_VIRTUALIZE(function(PlayerData)
         Color = Color3.fromRGB(255, 255, 255),
         Transparency = 1,
         Data = "",
+        Visible = false
+    })
+end)
+local Create_Crew = LPH_NO_VIRTUALIZE(function(PlayerData)
+    PlayerData.Drawings = PlayerData.Drawings or {}
+    PlayerData.CrewKey = nil
+    PlayerData.Drawings.CrewText = Create_Drawing("Text", {
+        Color = ESP.Settings.Crew.Color,
+        Center = true,
+        Outline = true,
+        Transparency = 1,
+        Size = ESP.Settings.Misc.MainSize,
+        Font = ESP.Settings.Misc.MainFont,
+        Text = "",
+        Visible = false
+    })
+    PlayerData.Drawings.CrewIcon = Create_Drawing("Image", {
+        Color = ESP.Settings.Crew.Color,
+        Transparency = 1,
+        Data = Crew_Icon_Data or "",
         Visible = false
     })
 end)
@@ -828,6 +858,9 @@ local Create_ESP = LPH_NO_VIRTUALIZE(function(PlayerData)
     end
     if ESP.Settings.Name.Enabled then
         Create_Name(PlayerData, PlayerData.Player)
+    end
+    if ESP.Settings.Crew.Enabled then
+        Create_Crew(PlayerData)
     end
     if ESP.Settings.Bars.Health.Enabled then
         Create_Health_Bar(PlayerData)
@@ -876,6 +909,11 @@ local function SyncConnections(PlayerData)
         if ESP.Settings.Bars.Health.Enabled then
             PlayerData.Connections.Health = Humanoid.HealthChanged:Connect(function(NewHealth)
                 Update_Health_Bar(PlayerData, NewHealth, math.abs(NewHealth - PlayerData.Fake_Health))
+            end)
+        end
+        if ESP.Settings.Bars.Health.Enabled or ESP.Settings.HealthText.Enabled then
+            PlayerData.Connections.MaxHealth = Humanoid:GetPropertyChangedSignal("MaxHealth"):Connect(function()
+                PlayerData.Fake_MaxHealth = Humanoid.MaxHealth
             end)
         end
         if ESP.Settings.HealthText.Enabled then
@@ -999,7 +1037,7 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData, Now)
     local Difference = Bottom.Y - ScreenPos.Y
     local Height = Difference * 6
     local Width = Difference * 4
-    local SameFrame = PlayerData.LastH == Height and PlayerData.LastW == Width and PlayerData.LastHP == PlayerData.Fake_Health and PlayerData.LastAP == PlayerData.Fake_Armor
+    local SameFrame = PlayerData.LastH == Height and PlayerData.LastW == Width and PlayerData.LastHP == PlayerData.Fake_Health and PlayerData.LastAP == PlayerData.Fake_Armor and PlayerData.LastMH == PlayerData.Fake_MaxHealth
     local DistanceY = Height + 4
     local MainSize = Vector2.new(Width, Height)
     local MainPos = Vector2.new(
@@ -1058,13 +1096,42 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData, Now)
     if ESP.Settings.Name.Enabled and Drawings.Name then
         Drawings.Name.Position = MainPos + Vector2.new(Width / 2, -15)
     end
+    if ESP.Settings.Crew.Enabled and Drawings.CrewText and Drawings.CrewIcon then
+        local CrewName = ESP.CrewNames and ESP.CrewNames[Player] or nil
+        if type(CrewName) ~= "string" or #CrewName == 0 then CrewName = nil end
+        if CrewName ~= PlayerData.CrewKey then
+            PlayerData.CrewKey = CrewName
+            Drawings.CrewText.Text = CrewName or ""
+        end
+        if CrewName then
+            local CrewX = MainPos.X + Width / 2
+            local CrewY = MainPos.Y - 29
+            Drawings.CrewText.Color = ESP.Settings.Crew.Color
+            Drawings.CrewText.Position = Vector2.new(CrewX, CrewY)
+            Drawings.CrewText.Visible = true
+            local TextW = Drawings.CrewText.TextBounds.X
+            local IconSize = 12
+            Drawings.CrewIcon.Size = Vector2.new(IconSize, IconSize)
+            Drawings.CrewIcon.Position = Vector2.new(CrewX - TextW / 2 - IconSize - 3, CrewY - 1)
+            Drawings.CrewIcon.Color = ESP.Settings.Crew.Color
+            Drawings.CrewIcon.Visible = true
+        else
+            Drawings.CrewText.Visible = false
+            Drawings.CrewIcon.Visible = false
+        end
+    elseif Drawings.CrewText then
+        Drawings.CrewText.Visible = false
+        if Drawings.CrewIcon then Drawings.CrewIcon.Visible = false end
+    end
     if ESP.Settings.Bars.Health.Enabled and Drawings.HealthBar and Drawings.HealthBarOutline then
         local Y_Size = Height + 2
         Drawings.HealthBarOutline.Position = MainPos - ESP.Settings.Bars.Health.Offset
         if not SameFrame then
             Drawings.HealthBarOutline.Size = Vector2.new(4, Y_Size)
         end
-        local Health_Size = (PlayerData.Fake_Health / Max_Health) * (Y_Size - 2)
+        local MaxHP = PlayerData.Fake_MaxHealth
+        if not MaxHP or MaxHP <= 0 then MaxHP = Max_Health end
+        local Health_Size = math.clamp(PlayerData.Fake_Health / MaxHP, 0, 1) * (Y_Size - 2)
         local Bar_Position = MainPos + Vector2.new(-5, Y_Size - Health_Size - 2)
         local Bar_Size = Vector2.new(2, Health_Size)
         Drawings.HealthBar.Position = Bar_Position
@@ -1205,6 +1272,7 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData, Now)
     PlayerData.LastW = Width
     PlayerData.LastHP = PlayerData.Fake_Health
     PlayerData.LastAP = PlayerData.Fake_Armor
+    PlayerData.LastMH = PlayerData.Fake_MaxHealth
 end)
 local Update_ESP = LPH_NO_VIRTUALIZE(function()
     local FrameTick = tick()
@@ -1218,6 +1286,9 @@ local function UntrackPlayer(Player)
         return
     end
     Data[Player] = nil
+    if ESP.CrewNames then
+        ESP.CrewNames[Player] = nil
+    end
     for _, Connection in PlayerData.Connections do
         if Connection then
             Connection:Disconnect()
@@ -1266,6 +1337,7 @@ SessionConnections[#SessionConnections + 1] = RunService.Heartbeat:Connect(funct
                         Root = Character:FindFirstChild("HumanoidRootPart"),
                         ArmorValue = ArmorValue,
                         Fake_Health = Humanoid.Health,
+                        Fake_MaxHealth = Humanoid.MaxHealth,
                         Fake_Armor = ArmorValue and ArmorValue.Value or 0,
                         Tracer_Thickness = 2,
                         Tracer_Outline_Thickness = 1,
@@ -1283,6 +1355,7 @@ SessionConnections[#SessionConnections + 1] = RunService.Heartbeat:Connect(funct
                         LastW = nil,
                         LastHP = nil,
                         LastAP = nil,
+                        LastMH = nil,
                     }
                     Data[Player] = PlayerData
                     Create_ESP(PlayerData)
@@ -1300,6 +1373,7 @@ SessionConnections[#SessionConnections + 1] = RunService.Heartbeat:Connect(funct
                         PlayerData.Root = NewRoot
                         PlayerData.ArmorValue = GetArmorValue(NewCharacter)
                         PlayerData.Fake_Health = NewHumanoid.Health
+                        PlayerData.Fake_MaxHealth = NewHumanoid.MaxHealth
                         PlayerData.Fake_Armor = PlayerData.ArmorValue and PlayerData.ArmorValue.Value or 0
                         SyncConnections(PlayerData)
                         HidePlayerTags(PlayerData)
@@ -1365,6 +1439,7 @@ function ESP:Refresh()
             PlayerData.ArmorValue = GetArmorValue(Character)
             if PlayerData.Humanoid then
                 PlayerData.Fake_Health = PlayerData.Humanoid.Health
+                PlayerData.Fake_MaxHealth = PlayerData.Humanoid.MaxHealth
             end
             PlayerData.Fake_Armor = PlayerData.ArmorValue and PlayerData.ArmorValue.Value or 0
         end
@@ -1372,6 +1447,7 @@ function ESP:Refresh()
         PlayerData.LastW = nil
         PlayerData.LastHP = nil
         PlayerData.LastAP = nil
+        PlayerData.LastMH = nil
         PlayerData.ChamsChar = PlayerData.Character
         Create_ESP(PlayerData)
         SyncConnections(PlayerData)
@@ -1413,6 +1489,12 @@ function ESP:Update_ESP_Color()
             end
             if Drawings.HealthText then
                 Drawings.HealthText.Color = ESP.Settings.HealthText.Color
+            end
+            if Drawings.CrewText then
+                Drawings.CrewText.Color = ESP.Settings.Crew.Color
+            end
+            if Drawings.CrewIcon then
+                Drawings.CrewIcon.Color = ESP.Settings.Crew.Color
             end
             if Drawings.Tracer then
                 Drawings.Tracer.Color = ESP.Settings.Tracer.Color
