@@ -131,6 +131,10 @@ ESP.Settings = {
         HideFullHealth = false,
         Color = Color3.fromRGB(255,255,255),
     },
+    Wanted = {
+        Enabled = false,
+        Color = Color3.fromRGB(255,255,255),
+    },
     Crew = {
         Enabled = false,
         Color = Color3.fromRGB(255,255,255),
@@ -408,6 +412,13 @@ local Update_Tool_Text = LPH_NO_VIRTUALIZE(function(PlayerData, ToolInstance)
         return
     end
     TextDrawing.Text = GetToolText(ToolInstance)
+end)
+local Update_WantedText = LPH_NO_VIRTUALIZE(function(PlayerData, WantedStr)
+    local TextDrawing = PlayerData.Drawings and PlayerData.Drawings.WantedText
+    if not TextDrawing then
+        return
+    end
+    TextDrawing.Text = WantedStr or ""
 end)
 local Heartbeats = {}
 local UpdateQueued = false
@@ -800,6 +811,19 @@ local Create_WeaponIcon = LPH_NO_VIRTUALIZE(function(PlayerData)
         Visible = false
     })
 end)
+local Create_Wanted = LPH_NO_VIRTUALIZE(function(PlayerData)
+    PlayerData.Drawings = PlayerData.Drawings or {}
+    PlayerData.Drawings.WantedText = Create_Drawing("Text", {
+        Color = ESP.Settings.Wanted.Color,
+        Center = false,
+        Outline = true,
+        Transparency = 1,
+        Size = ESP.Settings.Misc.SmallSize,
+        Font = ESP.Settings.Misc.SmallFont,
+        Text = "WANTED",
+        Visible = false
+    })
+end)
 local Create_Crew = LPH_NO_VIRTUALIZE(function(PlayerData)
     PlayerData.Drawings = PlayerData.Drawings or {}
     PlayerData.CrewKey = nil
@@ -887,6 +911,9 @@ local Create_ESP = LPH_NO_VIRTUALIZE(function(PlayerData)
     end
     if ESP.Settings.ToolText.Enabled then
         Create_Tool_Text(PlayerData)
+    end
+    if ESP.Settings.Wanted and ESP.Settings.Wanted.Enabled then
+        Create_Wanted(PlayerData)
     end
     if ESP.Settings.WeaponIcon.Enabled then
         Create_WeaponIcon(PlayerData)
@@ -1297,6 +1324,37 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData, Now)
     if ESP.Settings.HealthText.Enabled and Drawings.HealthText then
         Drawings.HealthText.Position = MainPos - (Armor_Ignored and ESP.Settings.HealthText.NormalOffset or ESP.Settings.HealthText.Offset) - Vector2.new(Drawings.HealthText.TextBounds.X, 0)
     end
+    if Drawings.WantedText then
+        local wantOn = ESP.Settings.Wanted and ESP.Settings.Wanted.Enabled
+        local showWanted = false
+        local wantedLabel = "WANTED"
+        if wantOn then
+            local okW, wval = pcall(function()
+                local fn = getgenv and getgenv().PhowgGetWanted
+                if type(fn) == "function" then return fn(Player) end
+                return nil
+            end)
+            if okW and wval ~= nil and wval ~= false then
+                local isW = false
+                if wval == true then isW = true
+                elseif type(wval) == "number" and wval > 0 then isW = true; wantedLabel = "WANTED"
+                elseif type(wval) == "string" and wval ~= "" and wval ~= "0" then isW = true; wantedLabel = (wval == "Wanted" and "WANTED" or "WANTED")
+                else isW = true end
+                if isW then showWanted = true end
+            end
+        end
+        if showWanted then
+            Drawings.WantedText.Color = ESP.Settings.Wanted.Color
+            Drawings.WantedText.Text = wantedLabel
+            local armorShown = ESP.Settings.Bars.Armor.Enabled and Drawings.ArmorBar and Drawings.ArmorBar.Visible and not Armor_Ignored
+            local xOff = armorShown and 8 or 4
+            Drawings.WantedText.Position = MainPos + Vector2.new(Width + xOff, -2)
+            Drawings.WantedText.Visible = true
+        else
+            Drawings.WantedText.Text = ""
+            Drawings.WantedText.Visible = false
+        end
+    end
     local BelowY = Height + 4
     if ESP.Settings.Distance.Enabled then
         BelowY = BelowY + 12
@@ -1568,6 +1626,9 @@ function ESP:Update_ESP_Color()
             end
             if Drawings.HealthText then
                 Drawings.HealthText.Color = ESP.Settings.HealthText.Color
+            end
+            if Drawings.WantedText and ESP.Settings.Wanted then
+                Drawings.WantedText.Color = ESP.Settings.Wanted.Color
             end
             if Drawings.CrewText then
                 Drawings.CrewText.Color = ESP.Settings.Crew.Color
