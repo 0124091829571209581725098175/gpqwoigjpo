@@ -1335,12 +1335,16 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData, Now)
                 return nil
             end)
             if okW and wval ~= nil and wval ~= false then
-                local isW = false
-                if wval == true then isW = true
-                elseif type(wval) == "number" and wval > 0 then isW = true; wantedLabel = "WANTED"
-                elseif type(wval) == "string" and wval ~= "" and wval ~= "0" then isW = true; wantedLabel = (wval == "Wanted" and "WANTED" or "WANTED")
-                else isW = true end
-                if isW then showWanted = true end
+                if wval == true then
+                    wantedLabel = "WANTED"
+                    showWanted = true
+                elseif type(wval) == "number" and wval > 0 then
+                    wantedLabel = tostring(math.floor(wval))
+                    showWanted = true
+                elseif type(wval) == "string" and wval ~= "" and wval ~= "0" then
+                    wantedLabel = string.sub(wval, 1, 12)
+                    showWanted = true
+                end
             end
         end
         if showWanted then
