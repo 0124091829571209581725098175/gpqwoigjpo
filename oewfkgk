@@ -135,6 +135,9 @@ ESP.Settings = {
         Enabled = false,
         Color = Color3.fromRGB(255,255,255),
     },
+    Animation = {
+        Mode = "none",
+    },
     Crew = {
         Enabled = false,
         Color = Color3.fromRGB(255,255,255),
@@ -1403,6 +1406,19 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData, Now)
         end
         Drawings.ToolText.Position = MainPos + Vector2.new(Width / 2, Y)
     end
+    local animMode = ESP.Settings.Animation and ESP.Settings.Animation.Mode or "none"
+    if animMode == "fading" then
+        PlayerData.FadeOn = true
+        local fade = 0.45 - 0.45 * math.cos(Now * 1.5)
+        for _, drawing in pairs(Drawings) do
+            pcall(function() drawing.Transparency = fade end)
+        end
+    elseif PlayerData.FadeOn then
+        PlayerData.FadeOn = false
+        for _, drawing in pairs(Drawings) do
+            pcall(function() drawing.Transparency = 1 end)
+        end
+    end
     PlayerData.LastH = Height
     PlayerData.LastW = Width
     PlayerData.LastHP = PlayerData.Fake_Health
@@ -1678,19 +1694,22 @@ function ESP:Configure(Config)
         end
     end
     local ColorOnly = true
-    local function CheckColorOnly(Table)
-        for Key, Value in pairs(Table) do
-            if type(Value) == "table" then
-                if not CheckColorOnly(Value) then
-                    return false
+    local function NeedsRefresh(Target, Source)
+        for Key, Value in pairs(Source) do
+            local Current = Target[Key]
+            if type(Value) == "table" and type(Current) == "table" then
+                if NeedsRefresh(Current, Value) then
+                    return true
                 end
-            elseif typeof(Value) ~= "Color3" and Key ~= "FillTransparency" and Key ~= "OutlineTransparency" then
-                return false
+            elseif typeof(Value) ~= "Color3" then
+                if Current ~= Value then
+                    return true
+                end
             end
         end
-        return true
+        return false
     end
-    if not CheckColorOnly(Config) then
+    if NeedsRefresh(self.Settings, Config) then
         ColorOnly = false
     end
     Merge(self.Settings, Config)
