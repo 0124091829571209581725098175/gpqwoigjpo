@@ -28,6 +28,7 @@ local GetHui = gethui and gethui() or CoreGui
 
 local Health = 100
 local Max_Health = 100
+ESP.SupportsSpatialBarGradient = true
 ESP.Settings = {
     Box = {
         Enabled = false,
@@ -643,6 +644,39 @@ local Create_Name = LPH_NO_VIRTUALIZE(function(PlayerData, Player)
         Visible = PlayerData.Rendering
     })
 end)
+local function RenderSpatialGradient(PlayerData, Kind, Settings)
+    local Drawings = PlayerData.Drawings
+    local Bar = Drawings[Kind .. "Bar"]
+    if not Bar then return end
+    local Spatial = Settings.SpatialGradient and Settings.Gradient
+    local Image = Drawings[Kind .. "BarGradient"]
+    if Spatial and Image then Image.Visible = false end
+    if not Settings.Gradient and Settings.BaseColor then Bar.Color = Settings.BaseColor end
+    local TopColor = Settings.BaseColor or Settings.Colors[1]
+    local BottomColor = Settings.GradientColor or Settings.Colors[2] or TopColor
+    local Shift = Settings.Moving_Gradient and math.sin(os.clock() * ESP.Settings.Bars.Speed * math.pi * 2) * 0.2 or 0
+    local Height = math.max(0, Bar.Size.Y)
+    for Index = 1, 12 do
+        local Key = Kind .. "SpatialGradient" .. Index
+        local Segment = Drawings[Key]
+        local Visible = Spatial and Settings.Enabled and Bar.Visible and Height > 0
+        if Visible and not Segment then
+            Segment = Create_Drawing("Square", {Filled = true, ZIndex = 4, Visible = false, Thickness = 1})
+            Drawings[Key] = Segment
+        end
+        if Segment then
+            Segment.Visible = Visible or false
+            if Visible then
+                local StartY = Height * (Index - 1) / 12
+                local EndY = Height * Index / 12
+                Segment.Position = Bar.Position + Vector2.new(0, StartY)
+                Segment.Size = Vector2.new(Bar.Size.X, EndY - StartY + (Index < 12 and 0.2 or 0))
+                Segment.Color = TopColor:Lerp(BottomColor, math.clamp((Index - 0.5) / 12 + Shift, 0, 1))
+                Segment.Transparency = Bar.Transparency
+            end
+        end
+    end
+end
 local Create_Health_Bar = LPH_NO_VIRTUALIZE(function(PlayerData)
     PlayerData.Drawings = PlayerData.Drawings or {}
     PlayerData.Drawings.HealthBar = Create_Drawing("Square", {
@@ -661,7 +695,7 @@ local Create_Health_Bar = LPH_NO_VIRTUALIZE(function(PlayerData)
         Transparency = Transparencies[5],
         Visible = PlayerData.Rendering
     })
-    if ESP.Settings.Bars.Health.Gradient then
+    if ESP.Settings.Bars.Health.Gradient and not ESP.Settings.Bars.Health.SpatialGradient then
         PlayerData.Drawings.HealthBarGradient = Create_Drawing("Image", {
             Color = Colors[6],
             Transparency = Transparencies[6],
@@ -694,7 +728,7 @@ local Create_Armor_Bar = LPH_NO_VIRTUALIZE(function(PlayerData)
         PlayerData.Drawings.ArmorBar.Size = ESP.Settings.Misc.ZeroSize
         PlayerData.Drawings.ArmorBarOutline.Size = ESP.Settings.Misc.ZeroSize
     end
-    if ESP.Settings.Bars.Armor.Gradient then
+    if ESP.Settings.Bars.Armor.Gradient and not ESP.Settings.Bars.Armor.SpatialGradient then
         PlayerData.Drawings.ArmorBarGradient = Create_Drawing("Image", {
             Color = Colors[12],
             Transparency = Transparencies[12],
@@ -1324,6 +1358,8 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData, Now)
             if ArmorGrad then ArmorGrad.Visible = false end
         end
     end
+    RenderSpatialGradient(PlayerData, "Health", ESP.Settings.Bars.Health)
+    RenderSpatialGradient(PlayerData, "Armor", ESP.Settings.Bars.Armor)
     if ESP.Settings.HealthText.Enabled and Drawings.HealthText then
         Drawings.HealthText.Position = MainPos - (Armor_Ignored and ESP.Settings.HealthText.NormalOffset or ESP.Settings.HealthText.Offset) - Vector2.new(Drawings.HealthText.TextBounds.X, 0)
     end
