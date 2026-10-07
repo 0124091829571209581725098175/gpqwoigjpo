@@ -1,8 +1,7 @@
+local LPH_NO_VIRTUALIZE = LPH_NO_VIRTUALIZE or function(...) return ... end
 local ESP = getgenv().ESP or {}
 getgenv().ESP = ESP
 do
-    cleardrawcache()
-
     function LPH_NO_VIRTUALIZE(...)
         return ...
     end
