@@ -26,6 +26,12 @@ local LocalPlayer = Players.LocalPlayer
 local CoreGui = game:GetService("CoreGui")
 local GetHui = gethui and gethui() or CoreGui
 
+local SharedConnect = getgenv().PhowgSharedConnect
+local function espconnect(signal, callback, owner, label)
+    if SharedConnect then return SharedConnect(signal, callback, owner, label) end
+    return signal:Connect(callback)
+end
+ESP.SharedConnectProvider = SharedConnect
 local Health = 100
 local Max_Health = 100
 ESP.SupportsSpatialBarGradient = true
@@ -991,30 +997,30 @@ local function SyncConnections(PlayerData)
     local Character = PlayerData.Character
     local Humanoid = PlayerData.Humanoid
     if Humanoid then
-        PlayerData.Connections.Died = Humanoid.Died:Connect(function()
+        PlayerData.Connections.Died = espconnect(Humanoid.Died, function()
             FadeOut(PlayerData)
-        end)
+        end, Humanoid, "esp/Humanoid.Died")
         if ESP.Settings.Bars.Health.Enabled then
-            PlayerData.Connections.Health = Humanoid.HealthChanged:Connect(function(NewHealth)
+            PlayerData.Connections.Health = espconnect(Humanoid.HealthChanged, function(NewHealth)
                 Update_Health_Bar(PlayerData, NewHealth, math.abs(NewHealth - PlayerData.Fake_Health))
-            end)
+            end, Humanoid, "esp/Humanoid.HealthChanged")
         end
         if ESP.Settings.Bars.Health.Enabled or ESP.Settings.HealthText.Enabled then
-            PlayerData.Connections.MaxHealth = Humanoid:GetPropertyChangedSignal("MaxHealth"):Connect(function()
+            PlayerData.Connections.MaxHealth = espconnect(Humanoid:GetPropertyChangedSignal("MaxHealth"), function()
                 PlayerData.Fake_MaxHealth = Humanoid.MaxHealth
-            end)
+            end, Humanoid, "esp/Humanoid:GetPropertyChangedSignal(MaxHealth)")
         end
         if ESP.Settings.HealthText.Enabled then
-            PlayerData.Connections.HealthText = Humanoid.HealthChanged:Connect(function(NewHealth)
+            PlayerData.Connections.HealthText = espconnect(Humanoid.HealthChanged, function(NewHealth)
                 Update_Health_Text(PlayerData, math.floor(NewHealth))
-            end)
+            end, Humanoid, "esp/Humanoid.HealthChanged")
         end
     end
     if ESP.Settings.Bars.Armor.Enabled and PlayerData.ArmorValue then
-        PlayerData.Connections.Armor = PlayerData.ArmorValue:GetPropertyChangedSignal("Value"):Connect(function()
+        PlayerData.Connections.Armor = espconnect(PlayerData.ArmorValue:GetPropertyChangedSignal("Value"), function()
             local NewArmor = PlayerData.ArmorValue.Value
             Update_Armor_Bar(PlayerData, NewArmor, math.abs(NewArmor - PlayerData.Fake_Armor))
-        end)
+        end, PlayerData.ArmorValue, "esp/PlayerData.ArmorValue:GetPropertyChangedSignal(Value)")
     end
     if Character then
         PlayerData.EquippedTool = FindEquippedTool(Character)
@@ -1022,7 +1028,7 @@ local function SyncConnections(PlayerData)
         if ESP.Settings.ToolText.Enabled then
             Update_Tool_Text(PlayerData, PlayerData.EquippedTool)
         end
-        PlayerData.Connections.ToolAdded = Character.ChildAdded:Connect(function(Child)
+        PlayerData.Connections.ToolAdded = espconnect(Character.ChildAdded, function(Child)
             if Child:IsA("Tool") then
                 PlayerData.EquippedTool = Child
                 PlayerData.ToolKey = IconKey(Child.Name)
@@ -1030,8 +1036,8 @@ local function SyncConnections(PlayerData)
                     Update_Tool_Text(PlayerData, Child)
                 end
             end
-        end)
-        PlayerData.Connections.ToolRemoved = Character.ChildRemoved:Connect(function(Child)
+        end, Character, "esp/Character.ChildAdded")
+        PlayerData.Connections.ToolRemoved = espconnect(Character.ChildRemoved, function(Child)
             if Child:IsA("Tool") then
                 local Current = FindEquippedTool(Character)
                 PlayerData.EquippedTool = Current
@@ -1040,7 +1046,7 @@ local function SyncConnections(PlayerData)
                     Update_Tool_Text(PlayerData, Current)
                 end
             end
-        end)
+        end, Character, "esp/Character.ChildRemoved")
     end
 end
 local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData, Now)
@@ -1604,7 +1610,7 @@ local function UntrackPlayer(Player)
     if PlayerData.ForceFieldBubble then PlayerData.ForceFieldBubble:Destroy() end
 end
 local DiscoveryAccum = 0
-SessionConnections[#SessionConnections + 1] = RunService.Heartbeat:Connect(function(Delta)
+SessionConnections[#SessionConnections + 1] = espconnect(RunService.Heartbeat, function(Delta)
     DiscoveryAccum = DiscoveryAccum + (Delta or 0)
     if DiscoveryAccum < 0.25 then
         return
@@ -1653,7 +1659,7 @@ SessionConnections[#SessionConnections + 1] = RunService.Heartbeat:Connect(funct
                     Create_ESP(PlayerData)
                     SyncConnections(PlayerData)
                     HidePlayerTags(PlayerData)
-                    PlayerData.RespawnConnection = Player.CharacterAdded:Connect(function(NewCharacter)
+                    PlayerData.RespawnConnection = espconnect(Player.CharacterAdded, function(NewCharacter)
                         local NewHumanoid = NewCharacter:WaitForChild("Humanoid", 5)
                         local NewRoot = NewCharacter:WaitForChild("HumanoidRootPart", 5)
                         if not NewHumanoid or not NewRoot then
@@ -1673,7 +1679,7 @@ SessionConnections[#SessionConnections + 1] = RunService.Heartbeat:Connect(funct
                         Update_Chams(PlayerData)
                         PlayerData.ChamsChar = NewCharacter
                         FadeIn(PlayerData)
-                    end)
+                    end, Player, "esp/Player.CharacterAdded")
                     FadeIn(PlayerData)
                     end)
                     if not BuiltOk then
@@ -1687,18 +1693,18 @@ SessionConnections[#SessionConnections + 1] = RunService.Heartbeat:Connect(funct
         UpdateQueued = true
         Heartbeats[#Heartbeats + 1] = Update_ESP
     end
-end)
-SessionConnections[#SessionConnections + 1] = RunService.Heartbeat:Connect(function()
+end, RunService, "esp/discovery")
+SessionConnections[#SessionConnections + 1] = espconnect(RunService.Heartbeat, function()
     for Index = 1, #Heartbeats do
         pcall(Heartbeats[Index])
     end
-end)
-SessionConnections[#SessionConnections + 1] = UserInputService.InputChanged:Connect(function(Input)
+end, RunService, "esp/render")
+SessionConnections[#SessionConnections + 1] = espconnect(UserInputService.InputChanged, function(Input)
     if Input.UserInputType == Enum.UserInputType.MouseMovement and ESP.Settings.Tracer.Origin == "Mouse" then
         ESP.Settings.Tracer.Origin_Position = GetOrigin()
     end
-end)
-SessionConnections[#SessionConnections + 1] = Players.PlayerRemoving:Connect(function(Player)
+end, UserInputService, "esp/UserInputService.InputChanged")
+SessionConnections[#SessionConnections + 1] = espconnect(Players.PlayerRemoving, function(Player)
     local PlayerData = Data[Player]
     if not PlayerData then
         return
@@ -1711,7 +1717,7 @@ SessionConnections[#SessionConnections + 1] = Players.PlayerRemoving:Connect(fun
         end
         UntrackPlayer(Player)
     end)
-end)
+end, Players, "esp/Players.PlayerRemoving")
 function ESP:Refresh()
     self.PreviewRevision += 1
     for Player, PlayerData in pairs(Data) do
