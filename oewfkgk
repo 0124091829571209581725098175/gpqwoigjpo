@@ -29,13 +29,16 @@ local function espconnect(signal, callback, owner, label)
     return signal:Connect(callback)
 end
 ESP.SharedConnectProvider = SharedConnect
-ESP.StartupRevision = 1
+ESP.StartupRevision = 2
 local Health = 100
 local Max_Health = 100
 ESP.SupportsSpatialBarGradient = true
 ESP.PreviewRevision = 0
 ESP.Previews = {}
 ESP.Settings = {
+    HeadDot = {Enabled = false, Size = 3, Outline = true, Color = Color3.new(1,1,1)},
+    Target = {Enabled = false, Color = Color3.fromRGB(255,90,90)},
+    AutoSpacing = true,
     Box = {
         Enabled = false,
         Thickness = 1,
@@ -923,6 +926,10 @@ local Create_Tracer = LPH_NO_VIRTUALIZE(function(PlayerData)
     end
 end)
 local Create_ESP = LPH_NO_VIRTUALIZE(function(PlayerData)
+    if ESP.Settings.HeadDot.Enabled then
+        PlayerData.Drawings.HeadDot = Create_Drawing('Circle', {Filled = true, Radius = ESP.Settings.HeadDot.Size, NumSides = 20, Color = ESP.Settings.HeadDot.Color, ZIndex = 6, Transparency = 1, Visible = false})
+        PlayerData.Drawings.HeadDotOutline = Create_Drawing('Circle', {Filled = true, Radius = ESP.Settings.HeadDot.Size + 1, NumSides = 20, Color = Color3.new(0,0,0), ZIndex = 5, Transparency = 1, Visible = false})
+    end
     if ESP.Settings.ForceField.Enabled then
         PlayerData.Drawings.ForceFieldText = Create_Drawing("Text", {Color = ESP.Settings.ForceField.Color, Text = "FORCEFIELD", Center = false, Outline = true, Transparency = 1, Size = ESP.Settings.Misc.SmallSize, Font = ESP.Settings.Misc.SmallFont, Visible = false})
     end
@@ -1141,6 +1148,20 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData, Now)
         Bottom.X - Width / 2,
         Bottom.Y - Height / 2
     )
+    local targetColor = ESP.Settings.Target.Enabled and ((PlayerData.Preview and ESP.ActiveTarget ~= nil) or Player == ESP.ActiveTarget) and ESP.Settings.Target.Color or nil
+    if Drawings.HeadDot then
+        local head = Character:FindFirstChild('Head')
+        local point, visible
+        if head then point, visible = Cam:WorldToViewportPoint(head.Position) end
+        Drawings.HeadDot.Visible = visible == true
+        Drawings.HeadDotOutline.Visible = visible == true and ESP.Settings.HeadDot.Outline
+        if point then
+            Drawings.HeadDot.Position = Vector2.new(point.X, point.Y)
+            Drawings.HeadDotOutline.Position = Drawings.HeadDot.Position
+            Drawings.HeadDot.Radius, Drawings.HeadDotOutline.Radius = ESP.Settings.HeadDot.Size, ESP.Settings.HeadDot.Size + 1
+            Drawings.HeadDot.Color = targetColor or ESP.Settings.HeadDot.Color
+        end
+    end
     if ESP.Settings.Box.Enabled then
         local BoxTop = Drawings.BoxTop
         local BoxRight = Drawings.BoxRight
@@ -1171,6 +1192,15 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData, Now)
             end
         end
     end
+    if ESP.Settings.Box.Enabled and Drawings.BoxTop then
+        local colors = ESP.Settings.Box.Colors
+        if targetColor then
+            Drawings.BoxTop.Color, Drawings.BoxRight.Color, Drawings.BoxBottom.Color, Drawings.BoxLeft.Color = targetColor, targetColor, targetColor, targetColor
+        elseif not ESP.Settings.Box.Animated then
+            Drawings.BoxTop.Color, Drawings.BoxRight.Color, Drawings.BoxBottom.Color, Drawings.BoxLeft.Color = colors.Top, colors.Right, colors.Bottom, colors.Left
+        end
+    end
+    if Drawings.Name then Drawings.Name.Color = targetColor or ESP.Settings.Name.Color end
     if ESP.Settings.Image.Enabled and Drawings.Image then
         Drawings.Image.Position = MainPos
         if not SameFrame then
@@ -1357,9 +1387,27 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData, Now)
             if ArmorGrad then ArmorGrad.Visible = false end
         end
     end
+    if PlayerData.TargetTinted and not targetColor then
+        for _, kind in ipairs({'Health','Armor'}) do
+            local settings = ESP.Settings.Bars[kind]
+            local bar, gradient = Drawings[kind .. 'Bar'], Drawings[kind .. 'BarGradient']
+            if bar then bar.Color = settings.BaseColor or settings.Colors[1] end
+            if gradient then gradient.Color = settings.GradientColor or settings.Colors[2] or settings.Colors[1] end
+        end
+    end
+    PlayerData.TargetTinted = targetColor ~= nil
     RenderSpatialGradient(PlayerData, "Health", ESP.Settings.Bars.Health)
     RenderSpatialGradient(PlayerData, "Armor", ESP.Settings.Bars.Armor)
+    if targetColor then
+        for _, kind in ipairs({'Health','Armor'}) do
+            local bar = Drawings[kind .. 'Bar']
+            if bar then bar.Color = targetColor end
+            for index = 1, 12 do local segment = Drawings[kind .. 'SpatialGradient' .. index]; if segment then segment.Color = targetColor end end
+            local gradient = Drawings[kind .. 'BarGradient']; if gradient then gradient.Color = targetColor end
+        end
+    end
     if ESP.Settings.HealthText.Enabled and Drawings.HealthText then
+        Drawings.HealthText.Color = targetColor or ESP.Settings.HealthText.Color
         Drawings.HealthText.Position = MainPos - (Armor_Ignored and ESP.Settings.HealthText.NormalOffset or ESP.Settings.HealthText.Offset) - Vector2.new(Drawings.HealthText.TextBounds.X, 0)
     end
     if Drawings.WantedText then
@@ -1463,6 +1511,31 @@ local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData, Now)
             end
         end
         Drawings.ToolText.Position = MainPos + Vector2.new(Width / 2, Y)
+    end
+    if ESP.Settings.AutoSpacing then
+        local top = 3
+        if Drawings.Name and Drawings.Name.Visible then
+            top += math.max(ESP.Settings.Misc.Size or 13, Drawings.Name.TextBounds.Y) + 2
+            Drawings.Name.Position = MainPos + Vector2.new(Width / 2, -top)
+        end
+        if Drawings.CrewText and Drawings.CrewText.Visible then
+            top += math.max(12, Drawings.CrewText.TextBounds.Y) + 2
+            Drawings.CrewText.Position = Vector2.new(Drawings.CrewText.Position.X, MainPos.Y - top)
+            if Drawings.CrewIcon then Drawings.CrewIcon.Position = Vector2.new(Drawings.CrewIcon.Position.X, MainPos.Y - top - 1) end
+            if Drawings.CrewCount then Drawings.CrewCount.Position = Vector2.new(Drawings.CrewCount.Position.X, MainPos.Y - top) end
+        end
+        local side, x = -2, Width + (Drawings.ArmorBar and Drawings.ArmorBar.Visible and 8 or 4)
+        for _, key in ipairs({'WantedText','ForceFieldText'}) do
+            local drawing = Drawings[key]
+            if drawing and drawing.Visible then
+                drawing.Position = MainPos + Vector2.new(x, side)
+                side += math.max(12, drawing.TextBounds.Y) + 2
+            end
+        end
+        local bottom = Height + 4
+        if Drawings.Distance and Drawings.Distance.Visible then Drawings.Distance.Position = MainPos + Vector2.new(Width / 2, bottom); bottom += math.max(12, Drawings.Distance.TextBounds.Y) + 2 end
+        if Drawings.WeaponIcon and Drawings.WeaponIcon.Visible then Drawings.WeaponIcon.Position = Vector2.new(Drawings.WeaponIcon.Position.X, MainPos.Y + bottom); bottom += Drawings.WeaponIcon.Size.Y + 4 end
+        if Drawings.ToolText and Drawings.ToolText.Visible then Drawings.ToolText.Position = MainPos + Vector2.new(Width / 2, bottom) end
     end
     local animMode = ESP.Settings.Animation and ESP.Settings.Animation.Mode or "none"
     if animMode == "fading" then
