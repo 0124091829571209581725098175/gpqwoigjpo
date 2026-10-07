@@ -1,8 +1,6 @@
+local ESP = getgenv().ESP or {}
+getgenv().ESP = ESP
 do
-    getgenv().ESP = getgenv().ESP or {}
-
-    local ESP = getgenv().ESP
-
     cleardrawcache()
 
     function LPH_NO_VIRTUALIZE(...)
@@ -19,7 +17,6 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Camera = workspace.CurrentCamera
 local UserInputService = game:GetService("UserInputService")
-local GuiService = game:GetService("GuiService")
 local TweenService = game:GetService("TweenService")
 
 local LocalPlayer = Players.LocalPlayer
@@ -32,6 +29,7 @@ local function espconnect(signal, callback, owner, label)
     return signal:Connect(callback)
 end
 ESP.SharedConnectProvider = SharedConnect
+ESP.StartupRevision = 1
 local Health = 100
 local Max_Health = 100
 ESP.SupportsSpatialBarGradient = true
@@ -279,6 +277,7 @@ local GetOrigin = LPH_NO_VIRTUALIZE(function()
     elseif ESP.Settings.Tracer.Origin == "Below" then
         return Vector2.new(ViewPort.X / 2, ViewPort.Y)
     end
+    return nil
 end)
 ESP.Settings.Tracer.Origin_Position = GetOrigin()
 local function GetAnchor(Character)
@@ -429,13 +428,6 @@ local Update_Tool_Text = LPH_NO_VIRTUALIZE(function(PlayerData, ToolInstance)
         return
     end
     TextDrawing.Text = GetToolText(ToolInstance)
-end)
-local Update_WantedText = LPH_NO_VIRTUALIZE(function(PlayerData, WantedStr)
-    local TextDrawing = PlayerData.Drawings and PlayerData.Drawings.WantedText
-    if not TextDrawing then
-        return
-    end
-    TextDrawing.Text = WantedStr or ""
 end)
 local Heartbeats = {}
 local UpdateQueued = false
@@ -810,16 +802,6 @@ local Create_Highlight = LPH_NO_VIRTUALIZE(function(PlayerData, Player)
         Adornee = Character,
         Parent = PlayerData.AdornmentParent or GetHui
     })
-end)
-local Update_Highlight = LPH_NO_VIRTUALIZE(function(PlayerData, Player)
-    if not PlayerData.Highlight then
-        return
-    end
-    local Character = PlayerData.Preview and PlayerData.Character or Player.Character or PlayerData.Character
-    if not Character then
-        return
-    end
-    PlayerData.Highlight.Adornee = Character
 end)
 local Create_Health_Text = LPH_NO_VIRTUALIZE(function(PlayerData)
     PlayerData.Drawings = PlayerData.Drawings or {}
@@ -1588,28 +1570,29 @@ local function UntrackPlayer(Player)
     end
     for _, Connection in PlayerData.Connections do
         if Connection then
-            Connection:Disconnect()
+            pcall(function() Connection:Disconnect() end)
         end
     end
     if PlayerData.RespawnConnection then
-        PlayerData.RespawnConnection:Disconnect()
+        pcall(function() PlayerData.RespawnConnection:Disconnect() end)
     end
     for _, Drawing in PlayerData.Drawings do
         if Drawing then
-            Drawing:Remove()
+            pcall(function() Drawing:Remove() end)
         end
     end
     for _, Entry in PlayerData.Chams do
         if Entry and Entry.Adornment then
-            Entry.Adornment:Destroy()
+            pcall(function() Entry.Adornment:Destroy() end)
         end
     end
     if PlayerData.Highlight then
-        PlayerData.Highlight:Destroy()
+        pcall(function() PlayerData.Highlight:Destroy() end)
     end
-    if PlayerData.ForceFieldBubble then PlayerData.ForceFieldBubble:Destroy() end
+    if PlayerData.ForceFieldBubble then pcall(function() PlayerData.ForceFieldBubble:Destroy() end) end
 end
 local DiscoveryAccum = 0
+local BuildRetries = setmetatable({}, {__mode = "k"})
 SessionConnections[#SessionConnections + 1] = espconnect(RunService.Heartbeat, function(Delta)
     DiscoveryAccum = DiscoveryAccum + (Delta or 0)
     if DiscoveryAccum < 0.25 then
@@ -1619,12 +1602,17 @@ SessionConnections[#SessionConnections + 1] = espconnect(RunService.Heartbeat, f
     if not ESP.Settings.Self.Enabled then
         UntrackPlayer(LocalPlayer)
     end
+    local BuildCount, BuildStarted = 0, os.clock()
     for _, Player in Players:GetPlayers() do
         if (Player ~= LocalPlayer or ESP.Settings.Self.Enabled) and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
             local Character = Player.Character
             local Humanoid = Character:FindFirstChildOfClass("Humanoid")
             if Humanoid then
                 if not Data[Player] then
+                    local retry = BuildRetries[Player]
+                    if retry and retry.Character == Character and tick() < retry.At then continue end
+                    if BuildCount >= 2 or (BuildCount > 0 and os.clock() - BuildStarted >= 0.002) then break end
+                    BuildCount += 1
                     local BuiltOk = pcall(function()
                     local ArmorValue = GetArmorValue(Character)
                     local PlayerData = {
@@ -1683,7 +1671,11 @@ SessionConnections[#SessionConnections + 1] = espconnect(RunService.Heartbeat, f
                     FadeIn(PlayerData)
                     end)
                     if not BuiltOk then
-                        Data[Player] = nil
+                        pcall(UntrackPlayer, Player)
+                        local attempts = retry and retry.Character == Character and retry.Attempts + 1 or 1
+                        BuildRetries[Player] = {Character = Character, Attempts = attempts, At = tick() + math.min(30, 2 ^ math.min(attempts - 1, 5))}
+                    else
+                        BuildRetries[Player] = nil
                     end
                 end
             end
@@ -1705,6 +1697,7 @@ SessionConnections[#SessionConnections + 1] = espconnect(UserInputService.InputC
     end
 end, UserInputService, "esp/UserInputService.InputChanged")
 SessionConnections[#SessionConnections + 1] = espconnect(Players.PlayerRemoving, function(Player)
+    BuildRetries[Player] = nil
     local PlayerData = Data[Player]
     if not PlayerData then
         return
