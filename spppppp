@@ -1,43 +1,24 @@
-local LPH_NO_VIRTUALIZE = LPH_NO_VIRTUALIZE or function(...) return ... end
-local ESP = getgenv().ESP or {}
+local previous = getgenv().ESP
+if type(previous) == 'table' and type(previous._Cleanup) == 'function' then pcall(previous._Cleanup) end
+local ESP: {[string]: any} = {Backend = 'Unnamed', StartupRevision = 2, PhowgBarHookRevision = 1, SupportsSpatialBarGradient = true, NativeBarGradients = true, PreviewRevision = 0, Previews = {}, CrewNames = {}, CrewIds = {}, CrewIcons = {}, CrewCounts = {}}
+ESP.PhowgBarHookRevision = 1
 getgenv().ESP = ESP
-do
-    function LPH_NO_VIRTUALIZE(...)
-        return ...
-    end
-    local OldCleanup = ESP._Cleanup
-    ESP._Cleanup = nil
-    if OldCleanup then
-        pcall(OldCleanup)
-    end
-end
-
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local Camera = workspace.CurrentCamera
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-
-local LocalPlayer = Players.LocalPlayer
-local CoreGui = game:GetService("CoreGui")
-local GetHui = gethui and gethui() or CoreGui
-
+local Players, RunService, CoreGui = game:GetService('Players'), game:GetService('RunService'), game:GetService('CoreGui')
+local LocalPlayer, Workspace = Players.LocalPlayer, workspace
 local SharedConnect = getgenv().PhowgSharedConnect
-local function espconnect(signal, callback, owner, label)
-    if SharedConnect then return SharedConnect(signal, callback, owner, label) end
-    return signal:Connect(callback)
-end
 ESP.SharedConnectProvider = SharedConnect
-ESP.StartupRevision = 2
-local Health = 100
-local Max_Health = 100
-ESP.SupportsSpatialBarGradient = true
-ESP.PreviewRevision = 0
-ESP.Previews = {}
+local utility, connections, cache = {funcs = {}}, {}, {}
+local floor, clamp, exp, atan2 = math.floor, math.clamp, math.exp, math.atan2
+local white, black = Color3.new(1,1,1), Color3.new(0,0,0)
+ESP.BarWhiteColor = white
+local gui = Instance.new('ScreenGui')
+gui.Name, gui.IgnoreGuiInset, gui.ResetOnSpawn, gui.DisplayOrder = 'PhowgUnnamedESP', true, false, 9700
+local parent = CoreGui
+if gethui then local ok, hidden = pcall(gethui); if ok and typeof(hidden) == 'Instance' then parent = hidden end end
+gui.Parent = parent
+local alive, enabled, revision = true, false, 0
 ESP.Settings = {
-    HeadDot = {Enabled = false, Size = 3, Outline = true, Color = Color3.new(1,1,1)},
     Target = {Enabled = false, Color = Color3.fromRGB(255,90,90)},
-    AutoSpacing = true,
     Box = {
         Enabled = false,
         Thickness = 1,
@@ -165,158 +146,221 @@ ESP.Settings = {
         Offset = Vector3.new(0, 0.5, 0),
         BarOffset = Vector2.new(0, 1),
         ZeroSize = Vector2.zero,
-        MainFont = identifyexecutor() == "Wave" and 1 or 2,
+        MainFont = (identifyexecutor and identifyexecutor() == "Wave") and 1 or 2,
         MainSize = 13,
-        SmallFont = identifyexecutor() == "Wave" and 1 or 2,
-        SmallSize = identifyexecutor() == "Wave" and 13 or 11,
+        SmallFont = (identifyexecutor and identifyexecutor() == "Wave") and 1 or 2,
+        SmallSize = (identifyexecutor and identifyexecutor() == "Wave") and 13 or 11,
     }
 }
-ESP.CrewNames = ESP.CrewNames or {}
-ESP.CrewIds = ESP.CrewIds or {}
-ESP.CrewIcons = ESP.CrewIcons or {}
-local Data = {}
-local Transparencies = {
-    [1] = 1,
-    [2] = 1,
-    [3] = 1,
-    [4] = 1,
-    [5] = 1,
-    [6] = 1,
-    [7] = 1,
-    [8] = 1,
-    [9] = 1,
-    [10] = 1,
-    [11] = 1,
-    [12] = 1,
-    [13] = 1,
-    [14] = 0.11,
-}
-local Colors = {
-    [1] = Color3.fromRGB(255,255,255),
-    [2] = Color3.fromRGB(30,30,30),
-    [3] = Color3.fromRGB(255,255,255),
-    [4] = Color3.fromRGB(0, 255, 0),
-    [5] = Color3.fromRGB(30, 30, 30),
-    [6] = Color3.fromRGB(105, 205, 255),
-    [7] = Color3.fromRGB(255,255,255),
-    [8] = Color3.fromRGB(255,255,255),
-    [9] = Color3.fromRGB(255,255,255),
-    [10] = Color3.fromRGB(0,155,255),
-    [11] = Color3.fromRGB(35,35,35),
-    [12] = Color3.fromRGB(255,255,255),
-    [13] = Color3.fromRGB(255,255,255),
-    [14] = Color3.fromRGB(255,0,0),
-    [15] = Color3.fromRGB(255,255,255),
-    [16] = Color3.fromRGB(1, 1, 1)
-}
-local Alt_Information = {
-    [1] = Color3.fromRGB(0, 0, 0),
-    [2] = 0.9,
-    [3] = Color3.fromRGB(255, 255, 255),
-    [4] = 0.2,
-    [5] = Color3.fromRGB(249, 217, 255),
-    [6] = 0.5,
-    [7] = Color3.fromRGB(249, 217, 255),
-    [8] = 0.2
-}
-local Body_Parts = {
-    "Head",
-    "UpperTorso",
-    "LowerTorso",
-    "LeftUpperArm",
-    "LeftLowerArm",
-    "LeftHand",
-    "RightUpperArm",
-    "RightLowerArm",
-    "RightHand",
-    "LeftUpperLeg",
-    "LeftLowerLeg",
-    "LeftFoot",
-    "RightUpperLeg",
-    "RightLowerLeg",
-    "RightFoot",
-    "Torso",
-    "Left Arm",
-    "Right Arm",
-    "Left Leg",
-    "Right Leg"
-}
-local Bar_Gradient_Data = base64_decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAACACAYAAADK+QP0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAACUSURBVChTbVHRFQMhDFLjEA7T/ecqoXBRe3woJIjm2dZanwH0XLABIyLEDLJdls+ypYznmCxkB2Q22GUMa+wmAUPcLr1gy+JbA9gZfWQV5RoujWhnCrtjzDnVsLkWvpRRnPeyUNZslLooxSMvVvIKUCggn3HdoQFL5v4LBd7yCDUqwGcrhVCe8efzw6+U3WKcX9H7F7u/BOHzO9gQAAAAAElFTkSuQmCC")
-local Image_Data_Gradient = base64_decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAABkCAYAAABHLFpgAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAABTSURBVChTdU/LDsAwCGJu1/3/59rUC5HAhaA8bNHdfwF4LrwbagN3wgakwMVc4ttCTLhxmKjOIma5S5VfiC0TE180R8aRIAJvuJfGGHcsoHoZ6gCUSgTCpTUDpwAAAABJRU5ErkJggg==")
-local Image_Data_Filled = base64_decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAMSURBVBhXY/j//z8ABf4C/qc1gYQAAAAASUVORK5CYII=")
-local Crew_Icon_Data = base64_decode("iVBORw0KGgoAAAANSUhEUgAAABYAAAAWCAYAAADEtGw7AAAASklEQVR4nN3TWwoAIAhEUfe/6WkDFeNjyLzg70HCDIApxsbDqIZ3peFb/WCmXhtLYdlVyO74rzdmcsOeaDjSOzjTEUZBoQ9CjwxeGjAzIuBJZBQAAAAASUVORK5CYII=")
-local function LerpColors(ColorList, Offset)
-    local Index = math.floor(Offset * #ColorList) + 1
-    local NextIndex = (Index % #ColorList) + 1
-    local Alpha = (Offset * #ColorList) % 1
-    return ColorList[Index]:Lerp(
-        ColorList[NextIndex],
-        Alpha
-    )
+local function connect(signal, fn, owner, label, recordOwned)
+    local connection = SharedConnect and SharedConnect(signal,fn,owner,label) or signal:Connect(fn)
+    if not recordOwned then connections[#connections + 1] = connection end
+    return connection
 end
-local Create_Drawing = LPH_NO_VIRTUALIZE(function(Class, Properties)
-    local Object = Drawing.new(Class)
-    for Property, Value in Properties do
-        Object[Property] = Value
-    end
-    return Object
-end)
-local Create_Instance = LPH_NO_VIRTUALIZE(function(Class, Properties)
-    local Instance_ = Instance.new(Class)
-    for Property, Value in Properties do
-        Instance_[Property] = Value
-    end
-    return Instance_
-end)
-local GetOrigin = LPH_NO_VIRTUALIZE(function()
-    local ViewPort = Camera.ViewportSize
-    if ESP.Settings.Tracer.Origin == "Above" then
-        return Vector2.new(ViewPort.X / 2, 0)
-    elseif ESP.Settings.Tracer.Origin == "Mouse" then
-        return Vector2.new(UserInputService:GetMouseLocation().X, UserInputService:GetMouseLocation().Y)
-    elseif ESP.Settings.Tracer.Origin == "Center" then
-        return Vector2.new(ViewPort.X / 2, ViewPort.Y / 2)
-    elseif ESP.Settings.Tracer.Origin == "Below" then
-        return Vector2.new(ViewPort.X / 2, ViewPort.Y)
-    end
-    return nil
-end)
-ESP.Settings.Tracer.Origin_Position = GetOrigin()
-local function GetAnchor(Character)
-    if not Character then
-        return nil
-    end
-    return Character:FindFirstChild("UpperTorso") or Character:FindFirstChild("Torso")
+local function widget(class, parent)
+    local item = Instance.new(class)
+    item.BackgroundTransparency, item.BackgroundColor3, item.BorderSizePixel, item.Visible, item.Parent = 1, white, 0, false, parent or gui
+    return item
 end
-local function GetArmorValue(Character)
-    local BodyEffects = Character and Character:FindFirstChild("BodyEffects") or nil
-    return BodyEffects and BodyEffects:FindFirstChild("Armor") or nil
-end
-local function GetToolText(ToolInstance)
-    if ToolInstance then
-        return string.lower(ToolInstance.Name:gsub("[^%w]", ""))
+local function drawing(kind, owner)
+    local native
+    if (kind == 'Image') and Drawing and Drawing.new then
+        local ok, result = pcall(function() return Drawing.new('Image') end)
+        if ok then native = result end
     end
-    return ""
-end
-local function FindEquippedTool(Character)
-    if not Character then
-        return nil
+    local item = native or widget(kind == 'Text' and 'TextLabel' or kind == 'Image' and 'ImageLabel' or 'Frame',owner)
+    local stroke
+    if kind == 'Text' then
+        item.Font, item.TextSize, item.TextColor3, item.TextStrokeColor3, item.TextStrokeTransparency = Enum.Font.Code, 13, white, black, 0
+        item.Size, item.TextXAlignment, item.TextYAlignment = UDim2.fromOffset(200,18), Enum.TextXAlignment.Left, Enum.TextYAlignment.Top
+    elseif kind == 'Square' then
+        stroke = Instance.new('UIStroke'); stroke.Color, stroke.Thickness, stroke.Parent = white, 1, item
     end
-    return Character:FindFirstChildOfClass("Tool")
-end
-local function HidePlayerTags(PlayerData)
-    if not ESP.Settings.Character.Hide_Tags then
-        return
+    local state = {Visible = false, Position = Vector2.zero, Size = Vector2.zero, From = Vector2.zero, To = Vector2.zero, Color = white, Transparency = 1, Filled = kind == 'Bar' or kind == 'Line', Thickness = 1, Text = '', Center = false, Native = native, Object = item, Kind = kind}
+    if native then native.Visible, native.Transparency, native.Color = false, 1, white
+    elseif state.Filled then item.BackgroundTransparency = 0 end
+    local proxy = {}
+    local function line()
+        local from, to = state.From or Vector2.zero, state.To or Vector2.zero
+        local delta = to - from
+        item.AnchorPoint, item.Position = Vector2.new(0.5,0.5), UDim2.fromOffset((from.X+to.X)/2,(from.Y+to.Y)/2)
+        item.Size, item.Rotation = UDim2.fromOffset(delta.Magnitude,math.max(1,state.Thickness)), math.deg(atan2(delta.Y,delta.X))
     end
-    local Humanoid = PlayerData.Humanoid
-    if Humanoid then
-        Humanoid.DisplayName = "‎"
-        Humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
-    end
+    local function remove() if native then native:Remove() else item:Destroy() end end
+    return setmetatable(proxy,{
+        __index = function(_,key)
+            if key == 'Remove' or key == 'Destroy' then return remove end
+            if key == 'TextBounds' then return kind == 'Text' and item.TextBounds or Vector2.zero end
+            return state[key]
+        end,
+        __newindex = function(_,key,value)
+            if state[key] == value then return end
+            state[key] = value
+            if native then native[key] = value; return end
+            if key == 'Position' then item.Position = UDim2.fromOffset(value.X,value.Y)
+            elseif key == 'Size' then
+                if type(value) == 'number' then item.TextSize = value else item.Size = UDim2.fromOffset(math.max(0,value.X),math.max(0,value.Y)) end
+            elseif key == 'Visible' then item.Visible = value
+            elseif key == 'Color' then
+                if kind == 'Text' then item.TextColor3 = value elseif kind == 'Image' then item.ImageColor3 = value else item.BackgroundColor3 = value; if stroke then stroke.Color = value end end
+            elseif key == 'Transparency' then
+                if kind == 'Text' then item.TextTransparency, item.TextStrokeTransparency = 1-value, 1-value
+                elseif kind == 'Image' then item.ImageTransparency = 1-value
+                else item.BackgroundTransparency = state.Filled and 1-value or 1; if stroke then stroke.Transparency = 1-value end end
+            elseif key == 'Filled' then item.BackgroundTransparency = value and 1-state.Transparency or 1; if stroke then stroke.Enabled = not value end
+            elseif key == 'Thickness' then if stroke then stroke.Thickness = value elseif kind == 'Line' then line() end
+            elseif key == 'Text' then item.Text = value
+            elseif key == 'Center' then item.AnchorPoint = value and Vector2.new(0.5,0) or Vector2.zero; item.TextXAlignment = value and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left
+            elseif key == 'From' or key == 'To' then line()
+            elseif key == 'ZIndex' then item.ZIndex = math.clamp(value,1,10000)
+            elseif key == 'Data' then if type(value) == 'string' and value:sub(1,13) == 'rbxassetid://' then item.Image = value end
+            end
+        end
+    })
 end
+local function getArmor(character)
+    local body = character and character:FindFirstChild('BodyEffects')
+    return body and body:FindFirstChild('Armor')
+end
+local function bind(record, character)
+    for _, connection in ipairs(record.CharacterConnections or {}) do connection:Disconnect() end
+    record.CharacterConnections = {}
+    for _, adornment in pairs(record.Chams or {}) do adornment:Destroy() end
+    record.Chams = {}
+    if record.Highlight then record.Highlight:Destroy(); record.Highlight = nil end
+    if record.ForceFieldBubble then record.ForceFieldBubble:Destroy(); record.ForceFieldBubble = nil end
+    record.Character, record.Parts, record.LastHealth, record.LastArmor = character, {}, nil, nil
+    local function refresh()
+        record.Root = character and character:FindFirstChild('HumanoidRootPart')
+        record.Anchor = character and (character:FindFirstChild('UpperTorso') or character:FindFirstChild('Torso') or record.Root)
+        record.Humanoid = character and character:FindFirstChildOfClass('Humanoid')
+        record.ArmorValue = getArmor(character)
+        record.EquippedTool = character and character:FindFirstChildOfClass('Tool')
+    end
+    local function added(part)
+        if part:IsA('BasePart') then record.Parts[part] = true end
+        refresh()
+    end
+    local function removed(part)
+        record.Parts[part] = nil
+        local adornment = record.Chams and record.Chams[part]
+        if adornment then adornment:Destroy(); record.Chams[part] = nil end
+        refresh()
+    end
+    if character then
+        for _, part in ipairs(character:GetDescendants()) do if part:IsA('BasePart') then record.Parts[part] = true end end
+        record.CharacterConnections[1] = connect(character.DescendantAdded,added,record.Player,'unnamed character added',true)
+        record.CharacterConnections[2] = connect(character.DescendantRemoving,removed,record.Player,'unnamed character removed',true)
+        record.CharacterConnections[3] = connect(character.ChildRemoved,refresh,record.Player,'unnamed tool removed',true)
+        record.CharacterConnections[4] = connect(character.ChildAdded,refresh,record.Player,'unnamed tool added',true)
+    end
+    refresh()
+end
+function utility.funcs.render(player, record)
+    if record.Drawings then return end
+    record.Drawings, record.Gradients, record.Chams = {}, {}, {}
+    local draws = record.Drawings
+    for _, name in ipairs({'Box','BoxOutline','BoxInline'}) do draws[name] = drawing('Square'); draws[name].ZIndex = 3 end
+    for _, name in ipairs({'Name','Distance','ToolText','HealthText','WantedText','ForceFieldText','CrewText','CrewCount'}) do draws[name] = drawing('Text'); draws[name].ZIndex = 5; draws[name].Center = name == 'Name' or name == 'Distance' or name == 'ToolText' or name == 'CrewText' end
+    for _, kind in ipairs({'Health','Armor'}) do
+        draws[kind .. 'BarOutline'], draws[kind .. 'Bar'] = drawing('Bar'), drawing('Bar')
+        draws[kind .. 'BarOutline'].ZIndex, draws[kind .. 'Bar'].ZIndex = 3, 4
+        local gradient = Instance.new('UIGradient')
+        gradient.Rotation, gradient.Parent = 90, draws[kind .. 'Bar'].Object
+        record.Gradients[kind] = gradient
+    end
+    draws.Tracer, draws.TracerOutline, draws.Image, draws.WeaponIcon, draws.CrewIcon = drawing('Line'), drawing('Line'), drawing('Bar'), drawing('Image'), drawing('Image')
+    local gradient = Instance.new('UIGradient')
+    gradient.Rotation, gradient.Parent = 90, draws.Image.Object
+    gradient.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(1,0)})
+    record.ImageGradient = gradient
+    draws.Tracer.ZIndex, draws.TracerOutline.ZIndex = 3, 2
+    draws.Image.ZIndex, draws.WeaponIcon.ZIndex, draws.CrewIcon.ZIndex = 1, 5, 5
+    draws.BoxOutline.Color, draws.BoxInline.Color, draws.HealthBarOutline.Color, draws.ArmorBarOutline.Color = black, black, black, black
+end
+function utility.funcs.clear_esp(player, record)
+    record = record or cache[player]
+    if not record then return end
+    record.Rendering = false
+    for _, object in pairs(record.Drawings or {}) do object.Visible = false end
+    for _, object in pairs(record.Chams or {}) do object.Visible = false end
+    if record.Highlight then record.Highlight.Enabled = false end
+    if record.ForceFieldBubble then record.ForceFieldBubble.Visible = false end
+end
+local function destroy(record)
+    for _, connection in ipairs(record.Connections or {}) do connection:Disconnect() end
+    for _, connection in ipairs(record.CharacterConnections or {}) do connection:Disconnect() end
+    for _, object in pairs(record.Drawings or {}) do object:Remove() end
+    for _, object in pairs(record.Chams or {}) do object:Destroy() end
+    if record.Highlight then record.Highlight:Destroy() end
+    if record.ForceFieldBubble then record.ForceFieldBubble:Destroy() end
+end
+local function track(player)
+    if cache[player] then return end
+    local record = {Player = player, Connections = {}}
+    cache[player] = record
+    bind(record,player.Character)
+    record.Connections[1] = connect(player.CharacterAdded,function(character) utility.funcs.clear_esp(player,record); bind(record,character) end,player,'unnamed respawn',true)
+end
+function ESP:HasForceField(character)
+    if not character then return false end
+    if character:FindFirstChildOfClass('ForceField') then return true end
+    local value = character:FindFirstChild('Forcefield') or character:FindFirstChild('ForceField')
+    return value and value:IsA('BoolValue') and value.Value == true or false
+end
+function ESP:SetBarGradient(record, kind, first, last, horizontal, inverted, shift)
+    local gradient = record.Gradients and record.Gradients[kind]
+    if not gradient then return end
+    local colors = record.GradientColors or {}; record.GradientColors = colors
+    local previous = colors[kind]
+    if not previous then previous = {}; colors[kind] = previous end
+    if previous.First ~= first or previous.Last ~= last or previous.Shift ~= shift then
+        local start, finish = first, last
+        if shift and math.abs(shift) > 0.001 then start = first:Lerp(last,math.max(0,shift)); finish = last:Lerp(first,math.max(0,-shift)) end
+        gradient.Color = ColorSequence.new(start,finish)
+        previous.First, previous.Last, previous.Shift = first, last, shift
+    end
+    gradient.Rotation = horizontal and (inverted and 180 or 0) or (inverted and 270 or 90)
+    gradient.Enabled = self.Settings.Bars[kind].Gradient == true
+end
+local function effects(player, record, protected, color)
+    local settings, root = ESP.Settings, record.Root
+    if settings.Chams.Enabled then
+        for part in pairs(record.Parts) do
+            if part.Parent and part.Name ~= 'HumanoidRootPart' then
+                local adornment = record.Chams[part]
+                if not adornment then
+                    adornment = Instance.new('BoxHandleAdornment')
+                    adornment.Adornee, adornment.AlwaysOnTop, adornment.ZIndex, adornment.Parent = part, true, 1, record.Character
+                    record.Chams[part] = adornment
+                end
+                adornment.Size, adornment.Color3, adornment.Transparency, adornment.Visible = part.Size + settings.Chams.Offset, color or settings.Chams.Color, settings.Chams.Transparency, true
+            end
+        end
+    else for _, adornment in pairs(record.Chams) do adornment.Visible = false end end
+    if settings.Highlight.Enabled then
+        if not record.Highlight then record.Highlight = Instance.new('Highlight'); record.Highlight.Parent = record.Character end
+        local highlight = record.Highlight
+        highlight.Adornee, highlight.Enabled, highlight.DepthMode = record.Character, true, settings.Highlight.DepthMode
+        highlight.FillColor, highlight.OutlineColor, highlight.FillTransparency, highlight.OutlineTransparency = color or settings.Highlight.FillColor, color or settings.Highlight.OutlineColor, settings.Highlight.FillTransparency, settings.Highlight.OutlineTransparency
+    elseif record.Highlight then record.Highlight.Enabled = false end
+    if protected and settings.ForceField.Enabled then
+        if not record.ForceFieldBubble then record.ForceFieldBubble = Instance.new('SphereHandleAdornment'); record.ForceFieldBubble.Parent = record.Character end
+        local bubble = record.ForceFieldBubble
+        bubble.Adornee, bubble.Radius, bubble.AlwaysOnTop, bubble.ZIndex = root, 4, true, 1
+        bubble.Color3, bubble.Transparency, bubble.Visible = settings.ForceField.Color, settings.ForceField.Transparency, true
+    elseif record.ForceFieldBubble then record.ForceFieldBubble.Visible = false end
+end
+local function label(draw, shown, text, position, color, size)
+    draw.Visible = shown == true
+    if shown then draw.Text, draw.Position, draw.Color, draw.Size = text, position, color, size end
+end
+
 local IconsURL = "https://raw.githubusercontent.com/0124091829571209581725098175/23023095823059230523/refs/heads/main/32980507239805723"
-local IconTable = nil
-local IconCache = {}
+local sharedIcons = getgenv().PhowgESPIcons or {Cache = {}}
+getgenv().PhowgESPIcons = sharedIcons
+local IconTable, IconCache = sharedIcons.Table, sharedIcons.Cache
+local IconPending, IconRetryAt = false, 0
 local function IconKey(ToolName)
     if not ToolName then
         return nil
@@ -337,9 +381,10 @@ local function IconKey(ToolName)
     return nil
 end
 local function FetchIcons()
-    if IconTable ~= nil then
+    if IconTable ~= nil or IconPending or tick() < IconRetryAt then
         return
     end
+    IconPending = true
     task.spawn(function()
         if game.HttpGet then
             local Ok, Raw = pcall(function() return game:HttpGet(IconsURL) end)
@@ -350,12 +395,13 @@ local function FetchIcons()
                     if Ok2 and Fn then
                         local Ok3, Table = pcall(Fn)
                         if Ok3 and type(Table) == "table" then
-                            IconTable = Table
+                            IconTable, sharedIcons.Table = Table, Table
                         end
                     end
                 end
             end
         end
+        IconPending, IconRetryAt = false, tick() + 10
     end)
 end
 local function GetIconData(Key)
@@ -380,1592 +426,183 @@ local function GetIconData(Key)
     end
     return nil
 end
-FetchIcons()
-local Tween
-local Update_Health_Bar = LPH_NO_VIRTUALIZE(function(PlayerData, New_Health, Difference)
-    if math.abs(Difference) <= 1 then
-        PlayerData.Fake_Health = New_Health
-        return
+function utility.funcs.update(player, record, delta)
+    record = record or cache[player]
+    if not record then return end
+    if not enabled or player == LocalPlayer and not ESP.Settings.Self.Enabled and not record.Preview then utility.funcs.clear_esp(player,record); return end
+    local character = record.Character
+    local root, humanoid = record.Root, record.Humanoid
+    local camera = record.PreviewCamera or Workspace.CurrentCamera
+    if not character or not character.Parent or not root or not root.Parent or not humanoid or not camera or humanoid.Health <= 0 then utility.funcs.clear_esp(player,record); return end
+    local hrp2D, onScreen = camera:WorldToViewportPoint(root.Position)
+    if not onScreen or hrp2D.Z <= 0 then utility.funcs.clear_esp(player,record); return end
+    local clientPosition = getgenv().PhowgClientPos
+    if typeof(clientPosition) == 'CFrame' then clientPosition = clientPosition.Position end
+    if typeof(clientPosition) ~= 'Vector3' then clientPosition = camera.CFrame.Position end
+    local distance = record.PreviewDistance or (root.Position - clientPosition).Magnitude
+    local settings = ESP.Settings
+    if settings.DistanceLimit.Enabled and distance > settings.DistanceLimit.MaxDistance then utility.funcs.clear_esp(player,record); return end
+    local charSize = (camera:WorldToViewportPoint(root.Position - Vector3.new(0,1,0)).Y - camera:WorldToViewportPoint(root.Position + Vector3.new(0,3,0)).Y) / 2
+    if charSize <= 0 or charSize ~= charSize then utility.funcs.clear_esp(player,record); return end
+    local size = Vector2.new(floor(charSize * 1.5),floor(charSize * 3.2))
+    local position = Vector2.new(floor(hrp2D.X - charSize * 1.5 / 2),floor(hrp2D.Y - charSize * 3 / 2))
+    utility.funcs.render(player,record)
+    local draws = record.Drawings
+    record.LayoutPosition, record.LayoutSize, record.Rendering = position, size, true
+    record.Fake_Health, record.Fake_MaxHealth = humanoid.Health, math.max(1,humanoid.MaxHealth)
+    record.Fake_Armor = record.ArmorValue and record.ArmorValue.Parent and record.ArmorValue.Value or 0
+    local color = settings.Target.Enabled and (ESP.ActiveTarget == player or record.Preview and ESP.ActiveTarget ~= nil) and settings.Target.Color or nil
+    local fading = settings.Animation.Mode == 'fading'
+    local opacity = fading and math.min(1,(record.Opacity or 0) + (delta or 1/60) * 8) or 1
+    record.Opacity = opacity
+    for _, draw in pairs(draws) do draw.Transparency = opacity end
+    draws.Box.Visible, draws.BoxOutline.Visible, draws.BoxInline.Visible = settings.Box.Enabled, settings.Box.Enabled, settings.Box.Enabled
+    draws.Box.Position, draws.Box.Size, draws.Box.Color, draws.Box.Thickness = position, size, color or settings.Box.Colors.Top, settings.Box.Thickness
+    draws.BoxOutline.Position, draws.BoxOutline.Size = position - Vector2.new(1,1), size + Vector2.new(2,2)
+    draws.BoxInline.Position, draws.BoxInline.Size = position + Vector2.new(1,1), size - Vector2.new(2,2)
+    draws.Image.Visible, draws.Image.Position, draws.Image.Size, draws.Image.Color, draws.Image.Transparency = settings.Image.Enabled, position, size, color or settings.Image.Color or white, 0.15 * opacity
+    record.ImageGradient.Enabled = settings.Image.Data == 'Gradient'
+    local name = settings.Name.Use_Both_Name and (player.DisplayName .. ' (@' .. player.Name .. ')') or settings.Name.Use_Display_Name and player.DisplayName or player.Name
+    label(draws.Name,settings.Name.Enabled,name,position + Vector2.new(size.X/2,-settings.Misc.MainSize-4),color or settings.Name.Color,settings.Misc.MainSize)
+    local below = size.Y + 4
+    label(draws.Distance,settings.Distance.Enabled,string.format('[%.0fm]',distance * 0.28),position + Vector2.new(size.X/2,below),color or settings.Distance.Color,settings.Misc.SmallSize)
+    if settings.Distance.Enabled then below = below + 14 end
+    local tool = record.EquippedTool
+    label(draws.ToolText,settings.ToolText.Enabled,tool and tool.Name or 'none',position + Vector2.new(size.X/2,below),color or settings.ToolText.Color,settings.Misc.SmallSize)
+    if settings.ToolText.Enabled then below = below + 14 end
+    draws.WeaponIcon.Visible = false
+    if settings.WeaponIcon.Enabled and tool then
+        local image = GetIconData(IconKey(tool.Name))
+        if image then draws.WeaponIcon.Data, draws.WeaponIcon.Position, draws.WeaponIcon.Size, draws.WeaponIcon.Color, draws.WeaponIcon.Visible = image, position + Vector2.new(size.X/2-20,below), Vector2.new(40,20), color or settings.WeaponIcon.Color, true end
     end
-    Tween(PlayerData, {
-        Fake_Health = New_Health
-    }, "Sine", nil, 0.15)
-end)
-local Update_Armor_Bar = LPH_NO_VIRTUALIZE(function(PlayerData, New_Armor, Difference)
-    local Bar = PlayerData.Drawings.ArmorBar
-    if not Bar then
-        PlayerData.Fake_Armor = New_Armor
-        return
+    local crew = ESP.CrewNames[player]
+    local crewOn = settings.Crew.Enabled and type(crew) == 'string' and crew ~= ''
+    label(draws.CrewText,crewOn,crew or '',position + Vector2.new(size.X/2,-32),color or settings.Crew.Color,settings.Misc.SmallSize)
+    local crewId = ESP.CrewIds[player]
+    label(draws.CrewCount,crewOn and settings.Crew.Count,'[' .. tostring(ESP.CrewCounts[crewId] or 0) .. ']',position + Vector2.new(size.X+4,-32),color or settings.Crew.Color,settings.Misc.SmallSize)
+    local icon = crewId and ESP.CrewIcons[crewId]
+    draws.CrewIcon.Visible = false
+    if crewOn and type(icon) == 'string' and icon ~= '' then
+        draws.CrewIcon.Data, draws.CrewIcon.Position, draws.CrewIcon.Size, draws.CrewIcon.Visible = icon, position + Vector2.new(-18,-32), Vector2.new(14,14), true
     end
-    local Outline = PlayerData.Drawings.ArmorBarOutline
-    local Gradient = PlayerData.Drawings.ArmorBarGradient
-    if ESP.Settings.Bars.Armor.Hide_If_Empty and New_Armor == 0 then
-        Bar.Size = ESP.Settings.Misc.ZeroSize
-        if Outline then
-            Outline.Size = ESP.Settings.Misc.ZeroSize
+    for index, kind in ipairs({'Health','Armor'}) do
+        local barSettings, value = settings.Bars[kind], kind == 'Health' and record.Fake_Health or record.Fake_Armor
+        local bar, outline = draws[kind .. 'Bar'], draws[kind .. 'BarOutline']
+        local shown = barSettings.Enabled and (kind ~= 'Armor' or not barSettings.Hide_If_Empty or value > 0)
+        bar.Visible, outline.Visible = shown, shown
+        if shown and not ESP.PhowgRenderBars then
+            local maximum = kind == 'Health' and record.Fake_MaxHealth or 130
+            local ratio = clamp(value/maximum,0,1)
+            local prior = record['Last' .. kind] or ratio
+            local smooth = prior + (ratio-prior) * (1-exp(-(delta or 1/60)*3))
+            record['Last' .. kind] = smooth
+            local x = position.X - (index == 1 and 7 or 13)
+            outline.Position, outline.Size = Vector2.new(x-1,position.Y-1), Vector2.new(5,size.Y+2)
+            bar.Position, bar.Size, bar.Color = Vector2.new(x,position.Y+(1-smooth)*size.Y), Vector2.new(3,smooth*size.Y), barSettings.Gradient and white or color or barSettings.BaseColor or barSettings.Colors[1]
+            ESP:SetBarGradient(record,kind,color or barSettings.BaseColor or barSettings.Colors[1],color or barSettings.GradientColor or barSettings.Colors[2] or bar.Color,false,false,0)
         end
-        if Gradient then
-            Gradient.Size = ESP.Settings.Misc.ZeroSize
-        end
-        PlayerData.Fake_Armor = 0
-        return
-    elseif Difference <= 1 then
-        PlayerData.Fake_Armor = New_Armor
-        return
     end
-    PlayerData.Fake_Armor = math.floor(New_Armor)
-end)
-local Update_Health_Text = LPH_NO_VIRTUALIZE(function(PlayerData, Health_)
-    local TextDrawing = PlayerData.Drawings.HealthText
-    if not TextDrawing then
-        return
+    label(draws.HealthText,settings.HealthText.Enabled and (not settings.HealthText.HideFullHealth or humanoid.Health < humanoid.MaxHealth),tostring(floor(humanoid.Health)),position + Vector2.new(-28,0),color or settings.HealthText.Color,settings.Misc.SmallSize)
+    local wanted = 0
+    if settings.Wanted.Enabled then
+        local fn = getgenv().PhowgGetWanted
+        if fn then local ok, value = pcall(fn,player); if ok then wanted = tonumber(value) or 0 end end
     end
-    local MaxHP = PlayerData.Fake_MaxHealth
-    if not MaxHP or MaxHP <= 0 then MaxHP = Max_Health end
-    TextDrawing.Text = (ESP.Settings.HealthText.HideFullHealth and Health_ >= MaxHP) and "" or tostring(Health_)
-end)
-local Update_Tool_Text = LPH_NO_VIRTUALIZE(function(PlayerData, ToolInstance)
-    local TextDrawing = PlayerData.Drawings.ToolText
-    if not TextDrawing then
-        return
+    label(draws.WantedText,settings.Wanted.Enabled and wanted > 0,'WANTED / ' .. tostring(floor(wanted)),position + Vector2.new(size.X+4,0),color or settings.Wanted.Color,settings.Misc.SmallSize)
+    local protected = ESP:HasForceField(record.SourceCharacter or character)
+    label(draws.ForceFieldText,settings.ForceField.Enabled and protected,'FORCEFIELD',position + Vector2.new(size.X+4,14),settings.ForceField.Color,settings.Misc.SmallSize)
+    draws.Tracer.Visible, draws.TracerOutline.Visible = settings.Tracer.Enabled, settings.Tracer.Enabled and settings.Tracer.Outline
+    if settings.Tracer.Enabled then
+        local from = record.TracerOrigin
+        if not from then
+            local viewport, origin = camera.ViewportSize, settings.Tracer.Origin
+            if origin == 'Mouse' then from = game:GetService('UserInputService'):GetMouseLocation()
+            elseif origin == 'Center' then from = Vector2.new(viewport.X/2,viewport.Y/2)
+            elseif origin == 'Below' then from = Vector2.new(viewport.X/2,viewport.Y)
+            else from = Vector2.new(viewport.X/2,0) end
+        end
+        local to = position + Vector2.new(size.X/2,size.Y/2)
+        draws.Tracer.From, draws.Tracer.To, draws.Tracer.Color, draws.Tracer.Thickness = from, to, color or settings.Tracer.Color, 1
+        draws.TracerOutline.From, draws.TracerOutline.To, draws.TracerOutline.Color, draws.TracerOutline.Thickness = from, to, black, 3
     end
-    TextDrawing.Text = GetToolText(ToolInstance)
-end)
-local Heartbeats = {}
-local UpdateQueued = false
-local SessionConnections = {}
-local Active_Tweens = {
-    Color = {},
-    Color3 = {},
-    Size = {},
-    tween_position = {},
-    Position = {},
-    tween_size = {},
-    Transparency = {},
-    FillTransparency = {},
-    OutlineTransparency = {},
-    BackgroundTransparency = {},
-    ImageTransparency = {},
-    FillColor = {},
-    OutlineColor = {},
-    Fake_Health = {},
-    Fake_Armor = {},
-    [11] = {},
-    [15] = {}
-}
-do
-    local Sqrt = math.sqrt
-    Tween = LPH_NO_VIRTUALIZE(function(Object, Properties, EasingStyle, _, TweenDuration)
-        local StartTime = os.clock()
-        local TweenFunctions = {}
-        for Property, TargetValue in Properties do
-            local ActiveTween = Active_Tweens[Property][Object]
-            if ActiveTween then
-                for Index = 1, #Heartbeats do
-                    if Heartbeats[Index] == ActiveTween then
-                        table.remove(Heartbeats, Index)
-                        break
-                    end
-                end
-            end
-            local StartValue = Object[Property]
-            if Property == "Color" or Property == "Color3" or Property == "FillColor" or Property == "OutlineColor" then
-                TweenFunctions[Property] = function()
-                    local Alpha = (os.clock() - StartTime) / TweenDuration
-                    local EasedAlpha = EasingStyle == Enum.EasingStyle.Exponential and (Alpha == 1 and 1 or 1 - 2 ^ (-10 * Alpha)) or EasingStyle == Enum.EasingStyle.Quad and Alpha ^ 2 or Sqrt(1 - (Alpha - 1) ^ 2)
-                    if EasingStyle == "Sine" then
-                        Alpha = math.clamp(Alpha, 0, 1)
-                        EasedAlpha = Alpha < 0.5 and 0.5 * math.sin(Alpha * 355 / 113) or 0.5 + 0.5 * (1 - math.cos((Alpha - 0.5) * 355 / 113))
-                    end
-                    Object[Property] = StartValue:Lerp(TargetValue, EasedAlpha)
-                end
-            elseif Property == "tween_position" or Property == "tween_size" then
-                TweenFunctions[Property] = function()
-                    local Alpha = (os.clock() - StartTime) / TweenDuration
-                    local EasedAlpha = EasingStyle == Enum.EasingStyle.Exponential and (Alpha == 1 and 1 or 1 - 2 ^ (-10 * Alpha)) or EasingStyle == Enum.EasingStyle.Quad and Alpha ^ 2 or Sqrt(1 - (Alpha - 1) ^ 2)
-                    local Delta = TargetValue - StartValue
-                    Delta = UDim2.new(
-                        Delta.X.Scale * EasedAlpha, Delta.X.Offset * EasedAlpha, Delta.Y.Scale * EasedAlpha, Delta.Y.Offset * EasedAlpha)
-                    Object[Property] = StartValue + Delta
-                end
-            else
-                TweenFunctions[Property] = function()
-                    local Alpha = (os.clock() - StartTime) / TweenDuration
-                    local EasedAlpha = EasingStyle == Enum.EasingStyle.Exponential and (Alpha == 1 and 1 or 1 - 2 ^ (-10 * Alpha)) or EasingStyle == Enum.EasingStyle.Quad and Alpha ^ 2 or Sqrt(1 - (Alpha - 1) ^ 2)
-                    Object[Property] = StartValue + (TargetValue - StartValue) * EasedAlpha
-                end
-            end
-        end
-        for Property, TweenFunction in TweenFunctions do
-            Heartbeats[#Heartbeats + 1] = TweenFunction
-            Active_Tweens[Property][Object] = TweenFunction
-        end
-        task.delay(TweenDuration, function()
-            for Property, TweenFunction in TweenFunctions do
-                for Index = 1, #Heartbeats do
-                    if Heartbeats[Index] == TweenFunction then
-                        table.remove(Heartbeats, Index)
-                        Object[Property] = Properties[Property]
-                        break
-                    end
-                end
-            end
-        end)
-    end)
+    effects(player,record,protected,color)
+    if ESP.PhowgRenderBars then ESP.PhowgRenderBars(ESP,player,record,tick()) end
 end
-local function FadeIn(PlayerData)
-    if PlayerData.Fading then
-        return
-    end
-    PlayerData.Fading = true
-    PlayerData.FadeGen = (PlayerData.FadeGen or 0) + 1
-    local Gen = PlayerData.FadeGen
-    for _, Drawing in PlayerData.Drawings do
-        if Drawing then
-            Drawing.Visible = true
-            Drawing.Transparency = 0
+function ESP:Configure(config)
+    local function merge(target, source)
+        for key, value in pairs(source) do
+            if type(value) == 'table' and type(target[key]) == 'table' then merge(target[key],value) else target[key] = value end
         end
     end
-    task.delay(0.05, function()
-        if PlayerData.FadeGen ~= Gen then
-            return
-        end
-        for _, Drawing in PlayerData.Drawings do
-            if Drawing then
-                Tween(Drawing, {
-                    Transparency = 1
-                }, Enum.EasingStyle.Quad, nil, 0.75)
-            end
-        end
-    end)
-    if PlayerData.Highlight then
-        PlayerData.Highlight.Enabled = true
-        if PlayerData.Player == LocalPlayer then
-            PlayerData.Highlight.FillTransparency = Alt_Information[2]
-            PlayerData.Highlight.OutlineTransparency = Alt_Information[4]
-        else
-            PlayerData.Highlight.FillTransparency = 1
-            PlayerData.Highlight.OutlineTransparency = 1
-            TweenService:Create(
-                PlayerData.Highlight,
-                TweenInfo.new(0.75, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-                {
-                    FillTransparency = Alt_Information[2],
-                    OutlineTransparency = Alt_Information[4]
-                }
-            ):Play()
-        end
-    end
-    task.delay(0.3, function()
-        if PlayerData.FadeGen ~= Gen then
-            return
-        end
-        PlayerData.Rendering = true
-        PlayerData.Fading = false
-    end)
+    merge(self.Settings,config)
+    enabled = false
+    for _, key in ipairs({'Box','Name','Crew','Distance','Chams','Highlight','ToolText','WeaponIcon','HealthText','Wanted','ForceField','Tracer','Image'}) do if self.Settings[key].Enabled then enabled = true; break end end
+    enabled = enabled or self.Settings.Bars.Health.Enabled or self.Settings.Bars.Armor.Enabled
+    revision = revision + 1
+    if not enabled then for player, record in pairs(cache) do utility.funcs.clear_esp(player,record) end end
 end
-local function FadeOut(PlayerData)
-    if PlayerData.Fading then
-        return
-    end
-    PlayerData.Fading = true
-    PlayerData.FadeGen = (PlayerData.FadeGen or 0) + 1
-    local Gen = PlayerData.FadeGen
-    task.delay(0.05, function()
-        if PlayerData.FadeGen ~= Gen then
-            return
-        end
-        for _, Drawing in PlayerData.Drawings do
-            if Drawing then
-                Tween(Drawing, {
-                    Transparency = 0
-                }, Enum.EasingStyle.Quad, nil, 0.75)
-            end
-        end
-    end)
-    if PlayerData.Highlight then
-        TweenService:Create(
-            PlayerData.Highlight,
-            TweenInfo.new(0.75, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-            {
-                FillTransparency = 1,
-                OutlineTransparency = 1
-            }
-        ):Play()
-    end
-    task.delay(0.75, function()
-        if PlayerData.FadeGen ~= Gen then
-            return
-        end
-        for _, Drawing in PlayerData.Drawings do
-            if Drawing then
-                Drawing.Visible = false
-            end
-        end
-        if PlayerData.Highlight then
-            PlayerData.Highlight.Enabled = false
-        end
-        PlayerData.Rendering = false
-        PlayerData.Fading = false
-    end)
+function ESP:Refresh() revision = revision + 1 end
+function ESP:Update_ESP_Color() self:Refresh() end
+function ESP:FadeAll() for _, record in pairs(cache) do record.Opacity = 0 end end
+function ESP:HidePreview(key) utility.funcs.clear_esp(nil,self.Previews[key]) end
+function ESP:DestroyPreview(key)
+    local record = self.Previews[key]
+    if record then destroy(record); self.Previews[key] = nil end
 end
-local Create_Box = LPH_NO_VIRTUALIZE(function(PlayerData)
-    PlayerData.Drawings = PlayerData.Drawings or {}
-    local BoxSettings = ESP.Settings.Box
-    local BoxColors = BoxSettings.Colors
-    PlayerData.Drawings.BoxTop = Create_Drawing("Line", {
-        Thickness = BoxSettings.Thickness,
-        Color = BoxColors.Top,
-        Visible = PlayerData.Rendering
-    })
-    PlayerData.Drawings.BoxRight = Create_Drawing("Line", {
-        Thickness = BoxSettings.Thickness,
-        Color = BoxColors.Right,
-        Visible = PlayerData.Rendering
-    })
-    PlayerData.Drawings.BoxBottom = Create_Drawing("Line", {
-        Thickness = BoxSettings.Thickness,
-        Color = BoxColors.Bottom,
-        Visible = PlayerData.Rendering
-    })
-    PlayerData.Drawings.BoxLeft = Create_Drawing("Line", {
-        Thickness = BoxSettings.Thickness,
-        Color = BoxColors.Left,
-        Visible = PlayerData.Rendering
-    })
-end)
-local Create_Name = LPH_NO_VIRTUALIZE(function(PlayerData, Player)
-    PlayerData.Drawings = PlayerData.Drawings or {}
-    PlayerData.Drawings.Name = Create_Drawing("Text", {
-        Color = ESP.Settings.Name.Color,
-        Center = true,
-        Outline = true,
-        Transparency = Transparencies[3],
-        Size = ESP.Settings.Misc.MainSize,
-        Font = ESP.Settings.Misc.MainFont,
-        Text =
-            ESP.Settings.Name.Use_Both_Name and
-            Player.DisplayName .. " (@" .. Player.Name .. ")" or
-            (ESP.Settings.Name.Use_Display_Name and Player.DisplayName) or
-            (ESP.Settings.Name.Use_User_Name and Player.Name),
-        Visible = PlayerData.Rendering
-    })
-end)
-local function RenderSpatialGradient(PlayerData, Kind, Settings)
-    local Drawings = PlayerData.Drawings
-    local Bar = Drawings[Kind .. "Bar"]
-    if not Bar then return end
-    local Spatial = Settings.SpatialGradient and Settings.Gradient
-    local Image = Drawings[Kind .. "BarGradient"]
-    if Spatial and Image then Image.Visible = false end
-    if not Settings.Gradient and Settings.BaseColor then Bar.Color = Settings.BaseColor end
-    local TopColor = Settings.BaseColor or Settings.Colors[1]
-    local BottomColor = Settings.GradientColor or Settings.Colors[2] or TopColor
-    local Shift = Settings.Moving_Gradient and math.sin(os.clock() * ESP.Settings.Bars.Speed * math.pi * 2) * 0.2 or 0
-    local Height = math.max(0, Bar.Size.Y)
-    for Index = 1, 12 do
-        local Key = Kind .. "SpatialGradient" .. Index
-        local Segment = Drawings[Key]
-        local Visible = Spatial and Settings.Enabled and Bar.Visible and Height > 0
-        if Visible and not Segment then
-            Segment = Create_Drawing("Square", {Filled = true, ZIndex = 4, Visible = false, Thickness = 1})
-            Drawings[Key] = Segment
-        end
-        if Segment then
-            Segment.Visible = Visible or false
-            if Visible then
-                local StartY = Height * (Index - 1) / 12
-                local EndY = Height * Index / 12
-                Segment.Position = Bar.Position + Vector2.new(0, StartY)
-                Segment.Size = Vector2.new(Bar.Size.X, EndY - StartY + (Index < 12 and 0.2 or 0))
-                Segment.Color = TopColor:Lerp(BottomColor, math.clamp((Index - 0.5) / 12 + Shift, 0, 1))
-                Segment.Transparency = Bar.Transparency
-            end
-        end
+function ESP:RenderPreview(key, player, character, viewCamera, position, size)
+    local source = player.Character or character
+    local humanoid = source and source:FindFirstChildOfClass('Humanoid')
+    if not character or not humanoid or size.X < 10 or size.Y < 10 then self:HidePreview(key); return end
+    local record = self.Previews[key]
+    if record and record.Character ~= character then self:DestroyPreview(key); record = nil end
+    if not record then
+        record = {Player = player, Preview = true, Connections = {}}
+        self.Previews[key] = record
+        bind(record,character)
     end
+    record.SourceCharacter, record.Humanoid, record.ArmorValue = source, humanoid, getArmor(source)
+    record.EquippedTool = source:FindFirstChildOfClass('Tool')
+    local projection = record.PreviewCamera
+    if not projection then
+        projection = {}
+        function projection:WorldToViewportPoint(world)
+            local point = self.Camera.CFrame:PointToObjectSpace(world)
+            local depth = -point.Z
+            if depth <= 0.01 then return Vector3.new(0,0,depth),false end
+            local focal = self.Size.Y / (2 * math.tan(math.rad(self.Camera.FieldOfView)/2))
+            local x, y = self.Position.X+self.Size.X/2+point.X*focal/depth, self.Position.Y+self.Size.Y/2-point.Y*focal/depth
+            return Vector3.new(x,y,depth), x>=self.Position.X and x<=self.Position.X+self.Size.X and y>=self.Position.Y and y<=self.Position.Y+self.Size.Y
+        end
+        record.PreviewCamera = projection
+    end
+    projection.Camera, projection.Position, projection.Size, projection.CFrame, projection.ViewportSize = viewCamera, position, size, viewCamera.CFrame, size
+    record.TracerOrigin, record.PreviewDistance = position + Vector2.new(size.X/2,size.Y), 0
+    utility.funcs.update(player,record,1/60)
 end
-local Create_Health_Bar = LPH_NO_VIRTUALIZE(function(PlayerData)
-    PlayerData.Drawings = PlayerData.Drawings or {}
-    PlayerData.Drawings.HealthBar = Create_Drawing("Square", {
-        Color = Colors[4],
-        Thickness = 1,
-        Filled = true,
-        Transparency = Transparencies[4],
-        ZIndex = 3,
-        Visible = PlayerData.Rendering
-    })
-    PlayerData.Drawings.HealthBarOutline = Create_Drawing("Square", {
-        Color = Colors[5],
-        Thickness = 3,
-        Filled = true,
-        ZIndex = 2,
-        Transparency = Transparencies[5],
-        Visible = PlayerData.Rendering
-    })
-    if ESP.Settings.Bars.Health.Gradient and not ESP.Settings.Bars.Health.SpatialGradient then
-        PlayerData.Drawings.HealthBarGradient = Create_Drawing("Image", {
-            Color = Colors[6],
-            Transparency = Transparencies[6],
-            ZIndex = 4,
-            Data = Bar_Gradient_Data,
-            Visible = PlayerData.Rendering
-        })
-    end
-end)
-local Create_Armor_Bar = LPH_NO_VIRTUALIZE(function(PlayerData)
-    PlayerData.Drawings = PlayerData.Drawings or {}
-    local Hide = not ESP.Settings.Bars.Armor.Hide_If_Empty or PlayerData.Fake_Armor <= 0
-    PlayerData.Drawings.ArmorBar = Create_Drawing("Square", {
-        Color = Colors[10],
-        Thickness = 1,
-        Filled = true,
-        Transparency = Transparencies[10],
-        ZIndex = 3,
-        Visible = PlayerData.Rendering
-    })
-    PlayerData.Drawings.ArmorBarOutline = Create_Drawing("Square", {
-        Color = Colors[11],
-        Thickness = 3,
-        Filled = true,
-        ZIndex = 2,
-        Transparency = Transparencies[11],
-        Visible = PlayerData.Rendering
-    })
-    if Hide then
-        PlayerData.Drawings.ArmorBar.Size = ESP.Settings.Misc.ZeroSize
-        PlayerData.Drawings.ArmorBarOutline.Size = ESP.Settings.Misc.ZeroSize
-    end
-    if ESP.Settings.Bars.Armor.Gradient and not ESP.Settings.Bars.Armor.SpatialGradient then
-        PlayerData.Drawings.ArmorBarGradient = Create_Drawing("Image", {
-            Color = Colors[12],
-            Transparency = Transparencies[12],
-            ZIndex = 4,
-            Data = Bar_Gradient_Data,
-            Visible = PlayerData.Rendering
-        })
-        if Hide then
-            PlayerData.Drawings.ArmorBarGradient.Size = ESP.Settings.Misc.ZeroSize
+for _, player in ipairs(Players:GetPlayers()) do track(player) end
+connect(Players.PlayerAdded,track,Players,'unnamed player added')
+connect(Players.PlayerRemoving,function(player)
+    if cache[player] then destroy(cache[player]); cache[player] = nil end
+    ESP.CrewNames[player], ESP.CrewIds[player] = nil, nil
+end,Players,'unnamed player removed')
+connect(RunService.Heartbeat,function(delta)
+    if not alive or not enabled then return end
+    for player, record in pairs(cache) do
+        local ok, err = pcall(utility.funcs.update,player,record,delta)
+        if not ok then
+            utility.funcs.clear_esp(player,record)
+            if tick()-(record.ErrorAt or -math.huge)>5 then record.ErrorAt = tick(); warn('[Phowg] unnamed ESP: ' .. tostring(err)) end
         end
     end
-end)
-local Create_Chams = LPH_NO_VIRTUALIZE(function(PlayerData)
-    local Chams_ = {}
-    local Culling_Mode = Enum.AdornCullingMode.Automatic
-    for Index = 1, #Body_Parts do
-        local Body_Part = Body_Parts[Index]
-        local Character_Part = PlayerData.Character and PlayerData.Character:FindFirstChild(Body_Part)
-        if Character_Part then
-            Chams_[#Chams_ + 1] = {
-                Name = Body_Part,
-                Adornment = Create_Instance("BoxHandleAdornment", {
-                    Visible = true,
-                    Adornee = Character_Part,
-                    Transparency = ESP.Settings.Chams.Transparency,
-                    AdornCullingMode = Culling_Mode,
-                    Archivable = true,
-                    Color3 = ESP.Settings.Chams.Color,
-                    ZIndex = ESP.Settings.Chams.ZIndex,
-                    AlwaysOnTop = true,
-                    Size = Character_Part.Size + ESP.Settings.Chams.Offset,
-                    Parent = PlayerData.AdornmentParent or CoreGui
-                })
-            }
-        end
-    end
-    PlayerData.Chams = Chams_
-end)
-local Update_Chams = LPH_NO_VIRTUALIZE(function(PlayerData)
-    for _, Entry in PlayerData.Chams do
-        if Entry and Entry.Adornment then
-            local Part = PlayerData.Character and PlayerData.Character:FindFirstChild(Entry.Name) or nil
-            if Part then
-                Entry.Adornment.Adornee = Part
-                Entry.Adornment.Size = Part.Size + ESP.Settings.Chams.Offset
-            end
-        end
-    end
-end)
-local Create_Highlight = LPH_NO_VIRTUALIZE(function(PlayerData, Player)
-    local Character = PlayerData.Preview and PlayerData.Character or Player.Character or PlayerData.Character
-    if not Character then
-        return
-    end
-    local Humanoid = Character:FindFirstChildOfClass("Humanoid")
-    if not Humanoid then
-        return
-    end
-    PlayerData.Highlight = Create_Instance("Highlight", {
-        FillColor = ESP.Settings.Highlight.FillColor,
-        FillTransparency = ESP.Settings.Highlight.FillTransparency,
-        OutlineColor = ESP.Settings.Highlight.OutlineColor,
-        OutlineTransparency = ESP.Settings.Highlight.OutlineTransparency,
-        DepthMode = ESP.Settings.Highlight.DepthMode,
-        Enabled = true,
-        Adornee = Character,
-        Parent = PlayerData.AdornmentParent or GetHui
-    })
-end)
-local Create_Health_Text = LPH_NO_VIRTUALIZE(function(PlayerData)
-    PlayerData.Drawings = PlayerData.Drawings or {}
-    local Humanoid = PlayerData.Humanoid
-    local Current = Humanoid and math.floor(Humanoid.Health) or Health
-    local CurrentMax = Humanoid and Humanoid.MaxHealth or Max_Health
-    if not CurrentMax or CurrentMax <= 0 then CurrentMax = Max_Health end
-    PlayerData.Drawings.HealthText = Create_Drawing("Text", {
-        Color = ESP.Settings.HealthText.Color,
-        Center = false,
-        Outline = true,
-        Transparency = Transparencies[7],
-        Size = ESP.Settings.Misc.SmallSize,
-        Font = ESP.Settings.Misc.SmallFont,
-        Text = (ESP.Settings.HealthText.HideFullHealth and Current >= CurrentMax) and "" or tostring(Current),
-        Visible = PlayerData.Rendering
-    })
-end)
-local Create_Tool_Text = LPH_NO_VIRTUALIZE(function(PlayerData)
-    PlayerData.Drawings = PlayerData.Drawings or {}
-    PlayerData.Drawings.ToolText = Create_Drawing("Text", {
-        Color = ESP.Settings.ToolText.Color,
-        Center = true,
-        Outline = true,
-        Transparency = Transparencies[8],
-        Size = ESP.Settings.Misc.SmallSize,
-        Font = ESP.Settings.Misc.SmallFont,
-        Text = GetToolText(FindEquippedTool(PlayerData.Character)),
-        Visible = PlayerData.Rendering
-    })
-end)
-local Create_WeaponIcon = LPH_NO_VIRTUALIZE(function(PlayerData)
-    PlayerData.Drawings = PlayerData.Drawings or {}
-    PlayerData.IconKey = nil
-    PlayerData.Drawings.WeaponIcon = Create_Drawing("Image", {
-        Color = ESP.Settings.WeaponIcon.Color,
-        Transparency = 1,
-        Data = "",
-        Visible = false
-    })
-end)
-local Create_Wanted = LPH_NO_VIRTUALIZE(function(PlayerData)
-    PlayerData.Drawings = PlayerData.Drawings or {}
-    PlayerData.Drawings.WantedText = Create_Drawing("Text", {
-        Color = ESP.Settings.Wanted.Color,
-        Center = false,
-        Outline = true,
-        Transparency = 1,
-        Size = ESP.Settings.Misc.SmallSize,
-        Font = ESP.Settings.Misc.SmallFont,
-        Text = "WANTED",
-        Visible = false
-    })
-end)
-local Create_Crew = LPH_NO_VIRTUALIZE(function(PlayerData)
-    PlayerData.Drawings = PlayerData.Drawings or {}
-    PlayerData.CrewKey = nil
-    PlayerData.Drawings.CrewText = Create_Drawing("Text", {
-        Color = ESP.Settings.Crew.Color,
-        Center = true,
-        Outline = true,
-        Transparency = 1,
-        Size = ESP.Settings.Misc.MainSize,
-        Font = ESP.Settings.Misc.MainFont,
-        Text = "",
-        Visible = false
-    })
-    PlayerData.Drawings.CrewIcon = Create_Drawing("Image", {
-        Color = ESP.Settings.Crew.Color,
-        Transparency = 1,
-        Data = Crew_Icon_Data or "",
-        Visible = false
-    })
-    PlayerData.Drawings.CrewCount = Create_Drawing("Text", {
-        Color = ESP.Settings.Crew.Color,
-        Center = true,
-        Outline = true,
-        Transparency = 1,
-        Size = ESP.Settings.Misc.SmallSize,
-        Font = ESP.Settings.Misc.SmallFont,
-        Text = "",
-        Visible = false
-    })
-end)
-local Create_Image = LPH_NO_VIRTUALIZE(function(PlayerData)
-    PlayerData.Drawings = PlayerData.Drawings or {}
-    PlayerData.Drawings.Image = Create_Drawing("Image", {
-        Color = Colors[13],
-        Transparency = Transparencies[13],
-        Data = ESP.Settings.Image.Data == "Gradient" and Image_Data_Gradient or ESP.Settings.Image.Data == "Filled" and Image_Data_Filled or "",
-        ZIndex = 4,
-        Visible = PlayerData.Rendering
-    })
-end)
-local Create_Distance = LPH_NO_VIRTUALIZE(function(PlayerData)
-    PlayerData.Drawings.Distance = Create_Drawing("Text", {
-        Color = ESP.Settings.Distance.Color,
-        Center = true,
-        Outline = true,
-        Size = ESP.Settings.Misc.SmallSize,
-        Font = ESP.Settings.Misc.SmallFont,
-        Transparency = 1,
-        Text = "",
-        Visible = PlayerData.Rendering
-    })
-end)
-local Create_Tracer = LPH_NO_VIRTUALIZE(function(PlayerData)
-    PlayerData.Drawings.Tracer = Create_Drawing("Line", {
-        Color = ESP.Settings.Tracer.Color,
-        Thickness = PlayerData.Tracer_Thickness,
-        Visible = PlayerData.Rendering
-    })
-    if ESP.Settings.Tracer.Outline then
-        PlayerData.Drawings.TracerOutline = Create_Drawing("Line", {
-            Color = ESP.Settings.Tracer.OutlineColor,
-            Thickness = PlayerData.Tracer_Outline_Thickness,
-            Visible = PlayerData.Rendering
-        })
-    end
-end)
-local Create_ESP = LPH_NO_VIRTUALIZE(function(PlayerData)
-    if ESP.Settings.HeadDot.Enabled then
-        PlayerData.Drawings.HeadDot = Create_Drawing('Circle', {Filled = true, Radius = ESP.Settings.HeadDot.Size, NumSides = 20, Color = ESP.Settings.HeadDot.Color, ZIndex = 6, Transparency = 1, Visible = false})
-        PlayerData.Drawings.HeadDotOutline = Create_Drawing('Circle', {Filled = true, Radius = ESP.Settings.HeadDot.Size + 1, NumSides = 20, Color = Color3.new(0,0,0), ZIndex = 5, Transparency = 1, Visible = false})
-    end
-    if ESP.Settings.ForceField.Enabled then
-        PlayerData.Drawings.ForceFieldText = Create_Drawing("Text", {Color = ESP.Settings.ForceField.Color, Text = "FORCEFIELD", Center = false, Outline = true, Transparency = 1, Size = ESP.Settings.Misc.SmallSize, Font = ESP.Settings.Misc.SmallFont, Visible = false})
-    end
-    if ESP.Settings.Box.Enabled then
-        Create_Box(PlayerData)
-    end
-    if ESP.Settings.Name.Enabled then
-        Create_Name(PlayerData, PlayerData.Player)
-    end
-    if ESP.Settings.Crew.Enabled then
-        Create_Crew(PlayerData)
-    end
-    if ESP.Settings.Bars.Health.Enabled then
-        Create_Health_Bar(PlayerData)
-    end
-    if ESP.Settings.Bars.Armor.Enabled then
-        Create_Armor_Bar(PlayerData)
-    end
-    if ESP.Settings.HealthText.Enabled then
-        Create_Health_Text(PlayerData)
-    end
-    if ESP.Settings.ToolText.Enabled then
-        Create_Tool_Text(PlayerData)
-    end
-    if ESP.Settings.Wanted and ESP.Settings.Wanted.Enabled then
-        Create_Wanted(PlayerData)
-    end
-    if ESP.Settings.WeaponIcon.Enabled then
-        Create_WeaponIcon(PlayerData)
-    end
-    if ESP.Settings.Image.Enabled then
-        Create_Image(PlayerData)
-    end
-    if ESP.Settings.Distance.Enabled then
-        Create_Distance(PlayerData)
-    end
-    if ESP.Settings.Tracer.Enabled then
-        Create_Tracer(PlayerData)
-    end
-    if ESP.Settings.Chams.Enabled then
-        Create_Chams(PlayerData)
-    end
-    if ESP.Settings.Highlight.Enabled then
-        Create_Highlight(PlayerData, PlayerData.Player)
-    end
-end)
-local function SyncConnections(PlayerData)
-    for _, Connection in PlayerData.Connections do
-        if Connection then
-            Connection:Disconnect()
-        end
-    end
-    PlayerData.Connections = {}
-    local Character = PlayerData.Character
-    local Humanoid = PlayerData.Humanoid
-    if Humanoid then
-        PlayerData.Connections.Died = espconnect(Humanoid.Died, function()
-            FadeOut(PlayerData)
-        end, Humanoid, "esp/Humanoid.Died")
-        if ESP.Settings.Bars.Health.Enabled then
-            PlayerData.Connections.Health = espconnect(Humanoid.HealthChanged, function(NewHealth)
-                Update_Health_Bar(PlayerData, NewHealth, math.abs(NewHealth - PlayerData.Fake_Health))
-            end, Humanoid, "esp/Humanoid.HealthChanged")
-        end
-        if ESP.Settings.Bars.Health.Enabled or ESP.Settings.HealthText.Enabled then
-            PlayerData.Connections.MaxHealth = espconnect(Humanoid:GetPropertyChangedSignal("MaxHealth"), function()
-                PlayerData.Fake_MaxHealth = Humanoid.MaxHealth
-            end, Humanoid, "esp/Humanoid:GetPropertyChangedSignal(MaxHealth)")
-        end
-        if ESP.Settings.HealthText.Enabled then
-            PlayerData.Connections.HealthText = espconnect(Humanoid.HealthChanged, function(NewHealth)
-                Update_Health_Text(PlayerData, math.floor(NewHealth))
-            end, Humanoid, "esp/Humanoid.HealthChanged")
-        end
-    end
-    if ESP.Settings.Bars.Armor.Enabled and PlayerData.ArmorValue then
-        PlayerData.Connections.Armor = espconnect(PlayerData.ArmorValue:GetPropertyChangedSignal("Value"), function()
-            local NewArmor = PlayerData.ArmorValue.Value
-            Update_Armor_Bar(PlayerData, NewArmor, math.abs(NewArmor - PlayerData.Fake_Armor))
-        end, PlayerData.ArmorValue, "esp/PlayerData.ArmorValue:GetPropertyChangedSignal(Value)")
-    end
-    if Character then
-        PlayerData.EquippedTool = FindEquippedTool(Character)
-        PlayerData.ToolKey = IconKey(PlayerData.EquippedTool and PlayerData.EquippedTool.Name or nil)
-        if ESP.Settings.ToolText.Enabled then
-            Update_Tool_Text(PlayerData, PlayerData.EquippedTool)
-        end
-        PlayerData.Connections.ToolAdded = espconnect(Character.ChildAdded, function(Child)
-            if Child:IsA("Tool") then
-                PlayerData.EquippedTool = Child
-                PlayerData.ToolKey = IconKey(Child.Name)
-                if ESP.Settings.ToolText.Enabled then
-                    Update_Tool_Text(PlayerData, Child)
-                end
-            end
-        end, Character, "esp/Character.ChildAdded")
-        PlayerData.Connections.ToolRemoved = espconnect(Character.ChildRemoved, function(Child)
-            if Child:IsA("Tool") then
-                local Current = FindEquippedTool(Character)
-                PlayerData.EquippedTool = Current
-                PlayerData.ToolKey = IconKey(Current and Current.Name or nil)
-                if ESP.Settings.ToolText.Enabled then
-                    Update_Tool_Text(PlayerData, Current)
-                end
-            end
-        end, Character, "esp/Character.ChildRemoved")
-    end
-end
-local RenderPlayer = LPH_NO_VIRTUALIZE(function(Player, PlayerData, Now)
-    if not PlayerData then
-        return
-    end
-    local Character = PlayerData.Preview and PlayerData.Character or Player.Character
-    if PlayerData.ForceFieldBubble then PlayerData.ForceFieldBubble.Visible = false end
-    if not Character then
-        if PlayerData.Highlight then
-            PlayerData.Highlight.Enabled = false
-        end
-        if PlayerData.Rendering then
-            for _, Drawing in PlayerData.Drawings do
-                Drawing.Visible = false
-            end
-            PlayerData.Rendering = false
-        end
-        return
-    end
-    local Humanoid = Character:FindFirstChildOfClass("Humanoid")
-    if not Humanoid then
-        if PlayerData.Highlight then
-            PlayerData.Highlight.Enabled = false
-        end
-        if PlayerData.Rendering then
-            for _, Drawing in PlayerData.Drawings do
-                Drawing.Visible = false
-            end
-            PlayerData.Rendering = false
-        end
-        return
-    end
-    local Anchor = GetAnchor(Character)
-    local Root = Character:FindFirstChild("HumanoidRootPart")
-    if not Anchor or not Root then
-        if PlayerData.Highlight then
-            PlayerData.Highlight.Enabled = false
-        end
-        if PlayerData.Rendering then
-            for _, Drawing in PlayerData.Drawings do
-                Drawing.Visible = false
-            end
-            PlayerData.Rendering = false
-        end
-        return
-    end
-    local AnchorPos = Anchor.Position
-    local RootPos = Root.CFrame.Position
-    PlayerData.Character = Character
-    PlayerData.Humanoid = Humanoid
-    PlayerData.Anchor = Anchor
-    PlayerData.Root = Root
-    local Cam = PlayerData.PreviewCamera or workspace.CurrentCamera or Camera
-    if not Cam then
-        return
-    end
-    local ScreenPos, OnScreen = Cam:WorldToViewportPoint(AnchorPos + ESP.Settings.Misc.Offset)
-    local realPos = getgenv().PhowgClientPos and getgenv().PhowgClientPos.Position or Cam.CFrame.Position
-    local DistanceValue = PlayerData.PreviewDistance or (realPos - RootPos).Magnitude
-    local Drawings = PlayerData.Drawings
-    if ESP.Settings.DistanceLimit.Enabled and DistanceValue > ESP.Settings.DistanceLimit.MaxDistance then
-        if PlayerData.Highlight then
-            PlayerData.Highlight.Enabled = false
-        end
-        if PlayerData.Rendering then
-            for _, Drawing in Drawings do
-                Drawing.Visible = false
-            end
-            PlayerData.Rendering = false
-        end
-        return
-    end
-    if not OnScreen then
-        if PlayerData.Highlight then
-            PlayerData.Highlight.Enabled = false
-        end
-        if PlayerData.Rendering then
-            for _, Drawing in Drawings do
-                Drawing.Visible = false
-            end
-            PlayerData.Rendering = false
-        end
-        return
-    end
-    if not PlayerData.Rendering then
-        for _, Drawing in Drawings do
-            Drawing.Visible = true
-        end
-        PlayerData.Rendering = true
-    end
-    if PlayerData.Highlight then
-        if PlayerData.Highlight.Adornee ~= Character then
-            PlayerData.Highlight.Adornee = Character
-        end
-        PlayerData.Highlight.Enabled = true
-    end
-    if PlayerData.ChamsChar ~= Character then
-        PlayerData.ChamsChar = Character
-        Update_Chams(PlayerData)
-    end
-    local Bottom = Cam:WorldToViewportPoint(AnchorPos - ESP.Settings.Misc.Offset)
-    local Difference = Bottom.Y - ScreenPos.Y
-    local Height = Difference * 6
-    local Width = Difference * 4
-    local SameFrame = PlayerData.LastH == Height and PlayerData.LastW == Width and PlayerData.LastHP == PlayerData.Fake_Health and PlayerData.LastAP == PlayerData.Fake_Armor and PlayerData.LastMH == PlayerData.Fake_MaxHealth
-    local DistanceY = Height + 4
-    local MainSize = Vector2.new(Width, Height)
-    local MainPos = Vector2.new(
-        Bottom.X - Width / 2,
-        Bottom.Y - Height / 2
-    )
-    local targetColor = ESP.Settings.Target.Enabled and ((PlayerData.Preview and ESP.ActiveTarget ~= nil) or Player == ESP.ActiveTarget) and ESP.Settings.Target.Color or nil
-    if Drawings.HeadDot then
-        local head = Character:FindFirstChild('Head')
-        local point, visible
-        if head then point, visible = Cam:WorldToViewportPoint(head.Position) end
-        Drawings.HeadDot.Visible = visible == true
-        Drawings.HeadDotOutline.Visible = visible == true and ESP.Settings.HeadDot.Outline
-        if point then
-            Drawings.HeadDot.Position = Vector2.new(point.X, point.Y)
-            Drawings.HeadDotOutline.Position = Drawings.HeadDot.Position
-            Drawings.HeadDot.Radius, Drawings.HeadDotOutline.Radius = ESP.Settings.HeadDot.Size, ESP.Settings.HeadDot.Size + 1
-            Drawings.HeadDot.Color = targetColor or ESP.Settings.HeadDot.Color
-        end
-    end
-    if ESP.Settings.Box.Enabled then
-        local BoxTop = Drawings.BoxTop
-        local BoxRight = Drawings.BoxRight
-        local BoxBottom = Drawings.BoxBottom
-        local BoxLeft = Drawings.BoxLeft
-        if BoxTop and BoxRight and BoxBottom and BoxLeft then
-            BoxTop.From = MainPos
-            BoxTop.To = MainPos + Vector2.new(MainSize.X, 0)
-            BoxRight.From = MainPos + Vector2.new(MainSize.X, 0)
-            BoxRight.To = MainPos + MainSize
-            BoxBottom.From = MainPos + Vector2.new(0, MainSize.Y)
-            BoxBottom.To = MainPos + MainSize
-            BoxLeft.From = MainPos
-            BoxLeft.To = MainPos + Vector2.new(0, MainSize.Y)
-            if ESP.Settings.Box.Animated then
-                local BoxColors = ESP.Settings.Box.Colors
-                local AnimatedColors = {
-                    BoxColors.Top,
-                    BoxColors.Right,
-                    BoxColors.Bottom,
-                    BoxColors.Left
-                }
-                local Time = -(Now * ESP.Settings.Box.AnimationSpeed) % 1
-                BoxTop.Color = LerpColors(AnimatedColors, Time)
-                BoxRight.Color = LerpColors(AnimatedColors, (Time + 0.25) % 1)
-                BoxBottom.Color = LerpColors(AnimatedColors, (Time + 0.5) % 1)
-                BoxLeft.Color = LerpColors(AnimatedColors, (Time + 0.75) % 1)
-            end
-        end
-    end
-    if ESP.Settings.Box.Enabled and Drawings.BoxTop then
-        local colors = ESP.Settings.Box.Colors
-        if targetColor then
-            Drawings.BoxTop.Color, Drawings.BoxRight.Color, Drawings.BoxBottom.Color, Drawings.BoxLeft.Color = targetColor, targetColor, targetColor, targetColor
-        elseif not ESP.Settings.Box.Animated then
-            Drawings.BoxTop.Color, Drawings.BoxRight.Color, Drawings.BoxBottom.Color, Drawings.BoxLeft.Color = colors.Top, colors.Right, colors.Bottom, colors.Left
-        end
-    end
-    if Drawings.Name then Drawings.Name.Color = targetColor or ESP.Settings.Name.Color end
-    if ESP.Settings.Image.Enabled and Drawings.Image then
-        Drawings.Image.Position = MainPos
-        if not SameFrame then
-            Drawings.Image.Size = MainSize
-        end
-    end
-    if ESP.Settings.Distance.Enabled and Drawings.Distance then
-        Drawings.Distance.Text = ("%dm"):format(math.floor(DistanceValue))
-        Drawings.Distance.Position = MainPos + Vector2.new(Width / 2, DistanceY)
-    end
-    if ESP.Settings.Tracer.Enabled and Drawings.Tracer then
-        Drawings.Tracer.From = PlayerData.TracerOrigin or ESP.Settings.Tracer.Origin_Position
-        Drawings.Tracer.To = Vector2.new(ScreenPos.X, ScreenPos.Y)
-        local TracerOutline = Drawings.TracerOutline
-        if TracerOutline and ESP.Settings.Tracer.Outline then
-            TracerOutline.From = Drawings.Tracer.From
-            TracerOutline.To = Drawings.Tracer.To
-        end
-    end
-    if ESP.Settings.Name.Enabled and Drawings.Name then
-        Drawings.Name.Position = MainPos + Vector2.new(Width / 2, -15)
-    end
-    if ESP.Settings.Crew and ESP.Settings.Crew.Enabled and Drawings.CrewText and Drawings.CrewIcon then
-        local CrewName = ESP.CrewNames and ESP.CrewNames[Player] or nil
-        if type(CrewName) ~= "string" or #CrewName == 0 then CrewName = nil end
-        if CrewName ~= PlayerData.CrewKey then
-            PlayerData.CrewKey = CrewName
-            Drawings.CrewText.Text = CrewName or ""
-        end
-        local CrewId = ESP.CrewIds and ESP.CrewIds[Player] or nil
-        local RawIcon = CrewId and ESP.CrewIcons and ESP.CrewIcons[CrewId] or nil
-        if type(RawIcon) ~= "string" or #RawIcon < 100 then RawIcon = nil end
-        local IconKey = tostring(CrewId or "") .. "|" .. (RawIcon and "1" or "0")
-        if IconKey ~= PlayerData.CrewIconKey then
-            PlayerData.CrewIconKey = IconKey
-            Drawings.CrewIcon.Data = RawIcon or Crew_Icon_Data or ""
-        end
-        if CrewName then
-            local CrewX = MainPos.X + Width / 2
-            local CrewY = MainPos.Y - 29
-            Drawings.CrewText.Color = ESP.Settings.Crew.Color
-            Drawings.CrewText.Position = Vector2.new(CrewX, CrewY)
-            Drawings.CrewText.Visible = true
-            local TextW = Drawings.CrewText.TextBounds.X
-            local IconSize = 12
-            local IconX = CrewX - TextW / 2 - IconSize - 3
-            Drawings.CrewIcon.Size = Vector2.new(IconSize, IconSize)
-            Drawings.CrewIcon.Position = Vector2.new(IconX, CrewY - 1)
-            Drawings.CrewIcon.Color = ESP.Settings.Crew.Color
-            Drawings.CrewIcon.Visible = true
-            if ESP.Settings.Crew.Count and Drawings.CrewCount then
-                local CrewN = CrewId and ESP.CrewCounts and ESP.CrewCounts[CrewId] or nil
-                if type(CrewN) == "number" and CrewN > 0 then
-                    Drawings.CrewCount.Text = tostring(CrewN)
-                    Drawings.CrewCount.Color = ESP.Settings.Crew.Color
-                    local CountW = Drawings.CrewCount.TextBounds.X
-                    Drawings.CrewCount.Position = Vector2.new(IconX - CountW - 3, CrewY)
-                    Drawings.CrewCount.Visible = true
-                elseif Drawings.CrewCount then
-                    Drawings.CrewCount.Visible = false
-                end
-            elseif Drawings.CrewCount then
-                Drawings.CrewCount.Visible = false
-            end
-        else
-            Drawings.CrewText.Visible = false
-            Drawings.CrewIcon.Visible = false
-            if Drawings.CrewCount then Drawings.CrewCount.Visible = false end
-        end
-    elseif Drawings.CrewText then
-        Drawings.CrewText.Visible = false
-        if Drawings.CrewIcon then Drawings.CrewIcon.Visible = false end
-        if Drawings.CrewCount then Drawings.CrewCount.Visible = false end
-    end
-    if ESP.Settings.Bars.Health.Enabled and Drawings.HealthBar and Drawings.HealthBarOutline then
-        local Y_Size = Height + 2
-        Drawings.HealthBarOutline.Position = MainPos - ESP.Settings.Bars.Health.Offset
-        if not SameFrame then
-            Drawings.HealthBarOutline.Size = Vector2.new(4, Y_Size)
-        end
-        local MaxHP = PlayerData.Fake_MaxHealth
-        if not MaxHP or MaxHP <= 0 then MaxHP = Max_Health end
-        local Health_Size = math.clamp(PlayerData.Fake_Health / MaxHP, 0, 1) * (Y_Size - 2)
-        local Bar_Position = MainPos + Vector2.new(-5, Y_Size - Health_Size - 2)
-        local Bar_Size = Vector2.new(2, Health_Size)
-        Drawings.HealthBar.Position = Bar_Position
-        if not SameFrame then
-            Drawings.HealthBar.Size = Bar_Size
-        end
-        local Gradient = Drawings.HealthBarGradient
-        if Gradient and ESP.Settings.Bars.Health.Gradient then
-            Gradient.Position = Bar_Position - ESP.Settings.Misc.BarOffset
-            if not SameFrame then
-                Gradient.Size = Bar_Size + ESP.Settings.Misc.BarOffset
-            end
-            if ESP.Settings.Bars.Health.Moving_Gradient then
-                if ESP.Settings.Bars.Type == "Rainbow" then
-                    local Hue = (Now * ESP.Settings.Bars.Speed) % 1
-                    Drawings.HealthBar.Color = Color3.fromHSV(Hue, 1, 1)
-                    Gradient.Color = Color3.fromHSV((Hue + 0.08) % 1, 1, 1)
-                elseif ESP.Settings.Bars.Type == "Gradient" then
-                    local Time = Now * ESP.Settings.Bars.Speed
-                    local BarColors = ESP.Settings.Bars.Health.Colors
-                    local Position = (Time % 1) * (#BarColors - 1)
-                    local Section = math.floor(Position) + 1
-                    local Alpha = Position % 1
-                    local BarColor = BarColors[Section]:Lerp(BarColors[Section + 1], Alpha)
-                    Drawings.HealthBar.Color = BarColor
-                    Gradient.Color = BarColors[(Section % (#BarColors - 1)) + 1]:Lerp(
-                        BarColors[((Section + 1) % (#BarColors - 1)) + 1],
-                        Alpha
-                    )
-                elseif ESP.Settings.Bars.Type == "Solid" then
-                    local BarColors = ESP.Settings.Bars.Health.Colors
-                    local Index = math.floor((Now * 2) % #BarColors) + 1
-                    local BarColor = BarColors[Index]
-                    Drawings.HealthBar.Color = BarColor
-                    Gradient.Color = BarColor
-                end
-            end
-        end
-    end
-    local Armor_Ignored = false
-    if ESP.Settings.Bars.Armor.Enabled and Drawings.ArmorBar and Drawings.ArmorBarOutline then
-        local LiveArmor = GetArmorValue(PlayerData.SourceCharacter or Character)
-        if LiveArmor ~= PlayerData.ArmorValue then
-            PlayerData.ArmorValue = LiveArmor
-            PlayerData.Fake_Armor = LiveArmor and LiveArmor.Value or 0
-            if not PlayerData.Preview then SyncConnections(PlayerData) end
-        end
-        local Armor = PlayerData.Fake_Armor
-        if not ESP.Settings.Bars.Armor.Hide_If_Empty or Armor ~= 0 then
-            Drawings.ArmorBar.Visible = true
-            Drawings.ArmorBarOutline.Visible = true
-            local Y_Size = Height + 2
-            Drawings.ArmorBarOutline.Position = MainPos + Vector2.new(Width + 2, -ESP.Settings.Bars.Armor.Offset.Y)
-            if not SameFrame then
-                Drawings.ArmorBarOutline.Size = Vector2.new(4, Y_Size)
-            end
-            Drawings.ArmorBarOutline.Size = Vector2.new(4, Y_Size)
-            local Armor_Size = (math.clamp(Armor / 130, 0, 1)) * (Y_Size - 2)
-            local Bar_Position = MainPos + Vector2.new(Width + 3, Y_Size - Armor_Size - 2)
-            local Bar_Size = Vector2.new(2, Armor_Size)
-            Drawings.ArmorBar.Position = Bar_Position
-            if not SameFrame then
-                Drawings.ArmorBar.Size = Bar_Size
-            end
-            local Gradient = Drawings.ArmorBarGradient
-            if Gradient and ESP.Settings.Bars.Armor.Gradient then
-                Gradient.Visible = true
-                Gradient.Position = Bar_Position - ESP.Settings.Misc.BarOffset
-                Gradient.Size = Bar_Size + ESP.Settings.Misc.BarOffset
-                if ESP.Settings.Bars.Armor.Moving_Gradient then
-                    if ESP.Settings.Bars.Type == "Rainbow" then
-                        local Time = (Now * ESP.Settings.Bars.Speed) % 1
-                        Drawings.ArmorBar.Color = Color3.fromHSV(Time % 1, 1, 1)
-                        Gradient.Color = Color3.fromHSV((Time + 0.08) % 1, 1, 1)
-                    elseif ESP.Settings.Bars.Type == "Gradient" then
-                        local Time = Now * ESP.Settings.Bars.Speed
-                        local BarColors = ESP.Settings.Bars.Armor.Colors
-                        local Position = (Time % 1) * (#BarColors - 1)
-                        local Section = math.floor(Position) + 1
-                        local Alpha = Position % 1
-                        local BarColor = BarColors[Section]:Lerp(BarColors[Section + 1], Alpha)
-                        Drawings.ArmorBar.Color = BarColor
-                        Gradient.Color = BarColors[(Section % (#BarColors - 1)) + 1]:Lerp(
-                            BarColors[((Section + 1) % (#BarColors - 1)) + 1],
-                            Alpha
-                        )
-                    elseif ESP.Settings.Bars.Type == "Solid" then
-                        local BarColors = ESP.Settings.Bars.Armor.Colors
-                        local Index = math.floor((Now * 2) % #BarColors) + 1
-                        local BarColor = BarColors[Index]
-                        Drawings.ArmorBar.Color = BarColor
-                        Gradient.Color = BarColor
-                    end
-                end
-            end
-        else
-            Armor_Ignored = true
-            Drawings.ArmorBar.Visible = false
-            Drawings.ArmorBarOutline.Visible = false
-            local ArmorGrad = Drawings.ArmorBarGradient
-            if ArmorGrad then ArmorGrad.Visible = false end
-        end
-    end
-    if PlayerData.TargetTinted and not targetColor then
-        for _, kind in ipairs({'Health','Armor'}) do
-            local settings = ESP.Settings.Bars[kind]
-            local bar, gradient = Drawings[kind .. 'Bar'], Drawings[kind .. 'BarGradient']
-            if bar then bar.Color = settings.BaseColor or settings.Colors[1] end
-            if gradient then gradient.Color = settings.GradientColor or settings.Colors[2] or settings.Colors[1] end
-        end
-    end
-    PlayerData.TargetTinted = targetColor ~= nil
-    RenderSpatialGradient(PlayerData, "Health", ESP.Settings.Bars.Health)
-    RenderSpatialGradient(PlayerData, "Armor", ESP.Settings.Bars.Armor)
-    if targetColor then
-        for _, kind in ipairs({'Health','Armor'}) do
-            local bar = Drawings[kind .. 'Bar']
-            if bar then bar.Color = targetColor end
-            for index = 1, 12 do local segment = Drawings[kind .. 'SpatialGradient' .. index]; if segment then segment.Color = targetColor end end
-            local gradient = Drawings[kind .. 'BarGradient']; if gradient then gradient.Color = targetColor end
-        end
-    end
-    if ESP.Settings.HealthText.Enabled and Drawings.HealthText then
-        Drawings.HealthText.Color = targetColor or ESP.Settings.HealthText.Color
-        Drawings.HealthText.Position = MainPos - (Armor_Ignored and ESP.Settings.HealthText.NormalOffset or ESP.Settings.HealthText.Offset) - Vector2.new(Drawings.HealthText.TextBounds.X, 0)
-    end
-    if Drawings.WantedText then
-        local wantOn = ESP.Settings.Wanted and ESP.Settings.Wanted.Enabled
-        local showWanted = false
-        local wantedLabel = "WANTED"
-        if wantOn then
-            local okW, wval = pcall(function()
-                local fn = getgenv and getgenv().PhowgGetWanted
-                if type(fn) == "function" then return fn(Player) end
-                return nil
-            end)
-            if okW and wval ~= nil and wval ~= false then
-                if wval == true then
-                    wantedLabel = "WANTED"
-                    showWanted = true
-                elseif type(wval) == "number" and wval > 0 then
-                    wantedLabel = tostring(math.floor(wval))
-                    showWanted = true
-                elseif type(wval) == "string" and wval ~= "" and wval ~= "0" then
-                    wantedLabel = string.sub(wval, 1, 12)
-                    showWanted = true
-                end
-            end
-        end
-        if showWanted then
-            Drawings.WantedText.Color = ESP.Settings.Wanted.Color
-            Drawings.WantedText.Text = wantedLabel
-            local armorShown = ESP.Settings.Bars.Armor.Enabled and Drawings.ArmorBar and Drawings.ArmorBar.Visible and not Armor_Ignored
-            local xOff = armorShown and 8 or 4
-            Drawings.WantedText.Position = MainPos + Vector2.new(Width + xOff, -2)
-            Drawings.WantedText.Visible = true
-        else
-            Drawings.WantedText.Text = ""
-            Drawings.WantedText.Visible = false
-        end
-    end
-    local sourceCharacter = PlayerData.SourceCharacter or Character
-    local protected = ESP:HasForceField(sourceCharacter)
-    if ESP.Settings.ForceField.Enabled and protected then
-        if not PlayerData.ForceFieldBubble or not PlayerData.ForceFieldBubble.Parent then
-            PlayerData.ForceFieldBubble = Create_Instance("SphereHandleAdornment", {
-                Name = "ESPForceFieldBubble", Adornee = Root, Radius = 4, Color3 = ESP.Settings.ForceField.Color,
-                Transparency = ESP.Settings.ForceField.Transparency, AlwaysOnTop = true, ZIndex = 1, Visible = true,
-                Parent = PlayerData.AdornmentParent or CoreGui,
-            })
-        end
-        PlayerData.ForceFieldBubble.Adornee = Root
-        PlayerData.ForceFieldBubble.Color3 = ESP.Settings.ForceField.Color
-        PlayerData.ForceFieldBubble.Visible = true
-        if Drawings.ForceFieldText then
-            Drawings.ForceFieldText.Visible = true
-            Drawings.ForceFieldText.Color = ESP.Settings.ForceField.Color
-            local wantedShown = Drawings.WantedText and Drawings.WantedText.Visible
-            local armorShown = Drawings.ArmorBar and Drawings.ArmorBar.Visible
-            Drawings.ForceFieldText.Position = MainPos + Vector2.new(Width + (armorShown and 8 or 4), wantedShown and 12 or -2)
-        end
-    elseif Drawings.ForceFieldText then
-        Drawings.ForceFieldText.Visible = false
-    end
-    local BelowY = Height + 4
-    if ESP.Settings.Distance.Enabled then
-        BelowY = BelowY + 12
-    end
-    local IconShown = false
-    if ESP.Settings.WeaponIcon.Enabled then
-        local Icon = Drawings.WeaponIcon
-        if Icon then
-            local Key = PlayerData.ToolKey
-            if Key ~= PlayerData.IconKey then
-                local IconData = Key and GetIconData(Key) or nil
-                if IconData then
-                    PlayerData.IconKey = Key
-                    Icon.Data = IconData
-                elseif Key == nil then
-                    PlayerData.IconKey = nil
-                end
-            end
-            if PlayerData.IconKey ~= nil then
-                local IconHeight = math.clamp(math.floor(Height * 0.1), 12, 22)
-                local IconWidth = IconHeight * 2
-                Icon.Color = ESP.Settings.WeaponIcon.Color
-                Icon.Size = Vector2.new(IconWidth, IconHeight)
-                Icon.Position = MainPos + Vector2.new(Width / 2 - IconWidth / 2, BelowY)
-                Icon.Visible = true
-                IconShown = true
-                BelowY = BelowY + IconHeight + 4
-            else
-                Icon.Visible = false
-            end
-        end
-    elseif Drawings.WeaponIcon then
-        Drawings.WeaponIcon.Visible = false
-    end
-    if ESP.Settings.ToolText.Enabled and Drawings.ToolText then
-        local Y = BelowY
-        if not IconShown then
-            Y = Height + 2
-            if ESP.Settings.Distance.Enabled then
-                Y = Height + 16
-            end
-        end
-        Drawings.ToolText.Position = MainPos + Vector2.new(Width / 2, Y)
-    end
-    if ESP.Settings.AutoSpacing then
-        local top = 3
-        if Drawings.Name and Drawings.Name.Visible then
-            top += math.max(ESP.Settings.Misc.Size or 13, Drawings.Name.TextBounds.Y) + 2
-            Drawings.Name.Position = MainPos + Vector2.new(Width / 2, -top)
-        end
-        if Drawings.CrewText and Drawings.CrewText.Visible then
-            top += math.max(12, Drawings.CrewText.TextBounds.Y) + 2
-            Drawings.CrewText.Position = Vector2.new(Drawings.CrewText.Position.X, MainPos.Y - top)
-            if Drawings.CrewIcon then Drawings.CrewIcon.Position = Vector2.new(Drawings.CrewIcon.Position.X, MainPos.Y - top - 1) end
-            if Drawings.CrewCount then Drawings.CrewCount.Position = Vector2.new(Drawings.CrewCount.Position.X, MainPos.Y - top) end
-        end
-        local side, x = -2, Width + (Drawings.ArmorBar and Drawings.ArmorBar.Visible and 8 or 4)
-        for _, key in ipairs({'WantedText','ForceFieldText'}) do
-            local drawing = Drawings[key]
-            if drawing and drawing.Visible then
-                drawing.Position = MainPos + Vector2.new(x, side)
-                side += math.max(12, drawing.TextBounds.Y) + 2
-            end
-        end
-        local bottom = Height + 4
-        if Drawings.Distance and Drawings.Distance.Visible then Drawings.Distance.Position = MainPos + Vector2.new(Width / 2, bottom); bottom += math.max(12, Drawings.Distance.TextBounds.Y) + 2 end
-        if Drawings.WeaponIcon and Drawings.WeaponIcon.Visible then Drawings.WeaponIcon.Position = Vector2.new(Drawings.WeaponIcon.Position.X, MainPos.Y + bottom); bottom += Drawings.WeaponIcon.Size.Y + 4 end
-        if Drawings.ToolText and Drawings.ToolText.Visible then Drawings.ToolText.Position = MainPos + Vector2.new(Width / 2, bottom) end
-    end
-    local animMode = ESP.Settings.Animation and ESP.Settings.Animation.Mode or "none"
-    if animMode == "fading" then
-        PlayerData.FadeOn = true
-        local fade = 0.45 - 0.45 * math.cos(Now * 1.5)
-        for _, drawing in pairs(Drawings) do
-            pcall(function() drawing.Transparency = fade end)
-        end
-    elseif PlayerData.FadeOn then
-        PlayerData.FadeOn = false
-        for _, drawing in pairs(Drawings) do
-            pcall(function() drawing.Transparency = 1 end)
-        end
-    end
-    PlayerData.LastH = Height
-    PlayerData.LastW = Width
-    PlayerData.LastHP = PlayerData.Fake_Health
-    PlayerData.LastAP = PlayerData.Fake_Armor
-    PlayerData.LastMH = PlayerData.Fake_MaxHealth
-end)
-function ESP:HasForceField(Character)
-    if not Character then return false end
-    if Character:FindFirstChildOfClass("ForceField") then return true end
-    local flag = Character:FindFirstChild("Forcefield") or Character:FindFirstChild("ForceField")
-    return flag ~= nil and flag:IsA("BoolValue") and flag.Value == true
-end
-function ESP:DestroyPreview(Key)
-    local preview = self.Previews[Key]
-    if not preview then return end
-    self.Previews[Key] = nil
-    for _, drawing in pairs(preview.Drawings) do pcall(function() drawing:Remove() end) end
-    for _, entry in pairs(preview.Chams) do if entry.Adornment then entry.Adornment:Destroy() end end
-    if preview.Highlight then preview.Highlight:Destroy() end
-    if preview.ForceFieldBubble then preview.ForceFieldBubble:Destroy() end
-end
-function ESP:HidePreview(Key)
-    local preview = self.Previews[Key]
-    if not preview then return end
-    for _, drawing in pairs(preview.Drawings) do drawing.Visible = false end
-    for _, entry in pairs(preview.Chams) do if entry.Adornment then entry.Adornment.Visible = false end end
-    if preview.Highlight then preview.Highlight.Enabled = false end
-    if preview.ForceFieldBubble then preview.ForceFieldBubble.Visible = false end
-    preview.Rendering = false
-end
-function ESP:RenderPreview(Key, Player, Character, ViewCamera, Position, Size)
-    local source = Player.Character or Character
-    local humanoid = source and source:FindFirstChildOfClass("Humanoid")
-    if not Character or not humanoid or Size.X < 10 or Size.Y < 10 then self:HidePreview(Key); return end
-    local armor = GetArmorValue(source)
-    local preview = self.Previews[Key]
-    if preview and (preview.Character ~= Character or preview.Revision ~= self.PreviewRevision) then self:DestroyPreview(Key); preview = nil end
-    if not preview then
-        preview = {Player = Player, Character = Character, SourceCharacter = source, Humanoid = humanoid, Fake_Health = humanoid.Health, Fake_MaxHealth = humanoid.MaxHealth,
-            Fake_Armor = armor and armor.Value or 0, ArmorValue = armor, Preview = true, Revision = self.PreviewRevision, AdornmentParent = Character,
-            Rendering = false, Drawings = {}, Chams = {}, Connections = {}, Tracer_Thickness = 2, Tracer_Outline_Thickness = 1}
-        self.Previews[Key] = preview
-        Create_ESP(preview)
-    end
-    preview.SourceCharacter = source
-    preview.Fake_Health, preview.Fake_MaxHealth = humanoid.Health, humanoid.MaxHealth
-    preview.Fake_Armor = armor and armor.Value or 0
-    preview.EquippedTool = FindEquippedTool(source)
-    preview.ToolKey = IconKey(preview.EquippedTool and preview.EquippedTool.Name or nil)
-    if preview.Drawings.ToolText then Update_Tool_Text(preview, preview.EquippedTool) end
-    if preview.Drawings.HealthText then Update_Health_Text(preview, math.floor(humanoid.Health)) end
-    local sourceRoot = source:FindFirstChild("HumanoidRootPart")
-    local client = getgenv().PhowgClientPos
-    preview.PreviewDistance = sourceRoot and ((client and client.Position or sourceRoot.Position) - sourceRoot.Position).Magnitude or 0
-    local projection = {CFrame = ViewCamera.CFrame}
-    function projection:WorldToViewportPoint(World)
-        local point = ViewCamera.CFrame:PointToObjectSpace(World)
-        local depth = -point.Z
-        if depth <= 0.01 then return Vector3.new(0, 0, depth), false end
-        local focal = Size.Y / (2 * math.tan(math.rad(ViewCamera.FieldOfView) / 2))
-        local x, y = Position.X + Size.X / 2 + point.X * focal / depth, Position.Y + Size.Y / 2 - point.Y * focal / depth
-        return Vector3.new(x, y, depth), x >= Position.X and x <= Position.X + Size.X and y >= Position.Y and y <= Position.Y + Size.Y
-    end
-    preview.PreviewCamera = projection
-    local origin = self.Settings.Tracer.Origin
-    preview.TracerOrigin = Vector2.new(Position.X + Size.X / 2, Position.Y + (origin == "Below" and Size.Y or origin == "Center" and Size.Y / 2 or 0))
-    if origin == "Mouse" then
-        local mouse = UserInputService:GetMouseLocation()
-        preview.TracerOrigin = Vector2.new(math.clamp(mouse.X, Position.X, Position.X + Size.X), math.clamp(mouse.Y, Position.Y, Position.Y + Size.Y))
-    end
-    for _, entry in pairs(preview.Chams) do if entry.Adornment then entry.Adornment.Visible = true end end
-    RenderPlayer(Player, preview, tick())
-end
-local Update_ESP = LPH_NO_VIRTUALIZE(function()
-    local FrameTick = tick()
-    for Player, PlayerData in Data do
-        pcall(RenderPlayer, Player, PlayerData, FrameTick)
-    end
-end)
-local function UntrackPlayer(Player)
-    local PlayerData = Data[Player]
-    if not PlayerData then
-        return
-    end
-    Data[Player] = nil
-    if ESP.CrewNames then
-        ESP.CrewNames[Player] = nil
-    end
-    if ESP.CrewIds then
-        ESP.CrewIds[Player] = nil
-    end
-    for _, Connection in PlayerData.Connections do
-        if Connection then
-            pcall(function() Connection:Disconnect() end)
-        end
-    end
-    if PlayerData.RespawnConnection then
-        pcall(function() PlayerData.RespawnConnection:Disconnect() end)
-    end
-    for _, Drawing in PlayerData.Drawings do
-        if Drawing then
-            pcall(function() Drawing:Remove() end)
-        end
-    end
-    for _, Entry in PlayerData.Chams do
-        if Entry and Entry.Adornment then
-            pcall(function() Entry.Adornment:Destroy() end)
-        end
-    end
-    if PlayerData.Highlight then
-        pcall(function() PlayerData.Highlight:Destroy() end)
-    end
-    if PlayerData.ForceFieldBubble then pcall(function() PlayerData.ForceFieldBubble:Destroy() end) end
-end
-local DiscoveryAccum = 0
-local BuildRetries = setmetatable({}, {__mode = "k"})
-SessionConnections[#SessionConnections + 1] = espconnect(RunService.Heartbeat, function(Delta)
-    DiscoveryAccum = DiscoveryAccum + (Delta or 0)
-    if DiscoveryAccum < 0.25 then
-        return
-    end
-    DiscoveryAccum = 0
-    if not ESP.Settings.Self.Enabled then
-        UntrackPlayer(LocalPlayer)
-    end
-    local BuildCount, BuildStarted = 0, os.clock()
-    for _, Player in Players:GetPlayers() do
-        if (Player ~= LocalPlayer or ESP.Settings.Self.Enabled) and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
-            local Character = Player.Character
-            local Humanoid = Character:FindFirstChildOfClass("Humanoid")
-            if Humanoid then
-                if not Data[Player] then
-                    local retry = BuildRetries[Player]
-                    if retry and retry.Character == Character and tick() < retry.At then continue end
-                    if BuildCount >= 2 or (BuildCount > 0 and os.clock() - BuildStarted >= 0.002) then break end
-                    BuildCount += 1
-                    local BuiltOk = pcall(function()
-                    local ArmorValue = GetArmorValue(Character)
-                    local PlayerData = {
-                        Player = Player,
-                        Character = Character,
-                        Humanoid = Humanoid,
-                        Anchor = GetAnchor(Character),
-                        Root = Character:FindFirstChild("HumanoidRootPart"),
-                        ArmorValue = ArmorValue,
-                        Fake_Health = Humanoid.Health,
-                        Fake_MaxHealth = Humanoid.MaxHealth,
-                        Fake_Armor = ArmorValue and ArmorValue.Value or 0,
-                        Tracer_Thickness = 2,
-                        Tracer_Outline_Thickness = 1,
-                        Rendering = false,
-                        Fading = false,
-                        FadeGen = 0,
-                        Drawings = {},
-                        Chams = {},
-                        Connections = {},
-                        RespawnConnection = nil,
-                        EquippedTool = nil,
-                        ToolKey = nil,
-                        ChamsChar = nil,
-                        LastH = nil,
-                        LastW = nil,
-                        LastHP = nil,
-                        LastAP = nil,
-                        LastMH = nil,
-                    }
-                    Data[Player] = PlayerData
-                    Create_ESP(PlayerData)
-                    SyncConnections(PlayerData)
-                    HidePlayerTags(PlayerData)
-                    PlayerData.RespawnConnection = espconnect(Player.CharacterAdded, function(NewCharacter)
-                        local NewHumanoid = NewCharacter:WaitForChild("Humanoid", 5)
-                        local NewRoot = NewCharacter:WaitForChild("HumanoidRootPart", 5)
-                        if not NewHumanoid or not NewRoot then
-                            return
-                        end
-                        PlayerData.Character = NewCharacter
-                        PlayerData.Humanoid = NewHumanoid
-                        PlayerData.Anchor = GetAnchor(NewCharacter)
-                        PlayerData.Root = NewRoot
-                        PlayerData.ArmorValue = GetArmorValue(NewCharacter)
-                        PlayerData.Fake_Health = NewHumanoid.Health
-                        PlayerData.Fake_MaxHealth = NewHumanoid.MaxHealth
-                        PlayerData.Fake_Armor = PlayerData.ArmorValue and PlayerData.ArmorValue.Value or 0
-                        SyncConnections(PlayerData)
-                        HidePlayerTags(PlayerData)
-                        PlayerData.ChamsChar = nil
-                        Update_Chams(PlayerData)
-                        PlayerData.ChamsChar = NewCharacter
-                        FadeIn(PlayerData)
-                    end, Player, "esp/Player.CharacterAdded")
-                    FadeIn(PlayerData)
-                    end)
-                    if not BuiltOk then
-                        pcall(UntrackPlayer, Player)
-                        local attempts = retry and retry.Character == Character and retry.Attempts + 1 or 1
-                        BuildRetries[Player] = {Character = Character, Attempts = attempts, At = tick() + math.min(30, 2 ^ math.min(attempts - 1, 5))}
-                    else
-                        BuildRetries[Player] = nil
-                    end
-                end
-            end
-        end
-    end
-    if not UpdateQueued then
-        UpdateQueued = true
-        Heartbeats[#Heartbeats + 1] = Update_ESP
-    end
-end, RunService, "esp/discovery")
-SessionConnections[#SessionConnections + 1] = espconnect(RunService.Heartbeat, function()
-    for Index = 1, #Heartbeats do
-        pcall(Heartbeats[Index])
-    end
-end, RunService, "esp/render")
-SessionConnections[#SessionConnections + 1] = espconnect(UserInputService.InputChanged, function(Input)
-    if Input.UserInputType == Enum.UserInputType.MouseMovement and ESP.Settings.Tracer.Origin == "Mouse" then
-        ESP.Settings.Tracer.Origin_Position = GetOrigin()
-    end
-end, UserInputService, "esp/UserInputService.InputChanged")
-SessionConnections[#SessionConnections + 1] = espconnect(Players.PlayerRemoving, function(Player)
-    BuildRetries[Player] = nil
-    local PlayerData = Data[Player]
-    if not PlayerData then
-        return
-    end
-    PlayerData.Character = nil
-    FadeOut(PlayerData)
-    task.delay(0.8, function()
-        if not Data[Player] then
-            return
-        end
-        UntrackPlayer(Player)
-    end)
-end, Players, "esp/Players.PlayerRemoving")
-function ESP:Refresh()
-    self.PreviewRevision += 1
-    for Player, PlayerData in pairs(Data) do
-        pcall(function()
-        local WasRendering = PlayerData.Rendering
-        local OldDrawings = PlayerData.Drawings
-        local OldChams = PlayerData.Chams
-        local OldHighlight = PlayerData.Highlight
-        if PlayerData.ForceFieldBubble then PlayerData.ForceFieldBubble:Destroy(); PlayerData.ForceFieldBubble = nil end
-        PlayerData.Drawings = {}
-        PlayerData.Chams = {}
-        PlayerData.Highlight = nil
-        local Character = Player.Character or PlayerData.Character
-        if Character then
-            PlayerData.Character = Character
-            PlayerData.Humanoid = Character:FindFirstChildOfClass("Humanoid") or PlayerData.Humanoid
-            PlayerData.Anchor = GetAnchor(Character)
-            PlayerData.Root = Character:FindFirstChild("HumanoidRootPart")
-            PlayerData.ArmorValue = GetArmorValue(Character)
-            if PlayerData.Humanoid then
-                PlayerData.Fake_Health = PlayerData.Humanoid.Health
-                PlayerData.Fake_MaxHealth = PlayerData.Humanoid.MaxHealth
-            end
-            PlayerData.Fake_Armor = PlayerData.ArmorValue and PlayerData.ArmorValue.Value or 0
-        end
-        PlayerData.LastH = nil
-        PlayerData.LastW = nil
-        PlayerData.LastHP = nil
-        PlayerData.LastAP = nil
-        PlayerData.LastMH = nil
-        PlayerData.ChamsChar = PlayerData.Character
-        Create_ESP(PlayerData)
-        SyncConnections(PlayerData)
-        PlayerData.Rendering = WasRendering
-        for _, Drawing in pairs(OldDrawings) do
-            if Drawing then
-                Drawing:Remove()
-            end
-        end
-        for _, Entry in pairs(OldChams) do
-            if Entry and Entry.Adornment then
-                Entry.Adornment:Destroy()
-            end
-        end
-        if OldHighlight then
-            OldHighlight:Destroy()
-        end
-        end)
-    end
-end
-function ESP:Update_ESP_Color()
-    self.PreviewRevision += 1
-    for Player, PlayerData in pairs(Data) do
-        local Drawings = PlayerData.Drawings
-        if Drawings then
-            if Drawings.Name then
-                Drawings.Name.Color = ESP.Settings.Name.Color
-            end
-            if Drawings.BoxTop then
-                Drawings.BoxTop.Color = ESP.Settings.Box.Colors.Top
-                Drawings.BoxRight.Color = ESP.Settings.Box.Colors.Right
-                Drawings.BoxBottom.Color = ESP.Settings.Box.Colors.Bottom
-                Drawings.BoxLeft.Color = ESP.Settings.Box.Colors.Left
-            end
-            if Drawings.Distance then
-                Drawings.Distance.Color = ESP.Settings.Distance.Color
-            end
-            if Drawings.ToolText then
-                Drawings.ToolText.Color = ESP.Settings.ToolText.Color
-            end
-            if Drawings.WeaponIcon then
-                Drawings.WeaponIcon.Color = ESP.Settings.WeaponIcon.Color
-            end
-            if Drawings.HealthText then
-                Drawings.HealthText.Color = ESP.Settings.HealthText.Color
-            end
-            if Drawings.WantedText and ESP.Settings.Wanted then
-                Drawings.WantedText.Color = ESP.Settings.Wanted.Color
-            end
-            if Drawings.CrewText then
-                Drawings.CrewText.Color = ESP.Settings.Crew.Color
-            end
-            if Drawings.CrewIcon then
-                Drawings.CrewIcon.Color = ESP.Settings.Crew.Color
-            end
-            if Drawings.CrewCount then
-                Drawings.CrewCount.Color = ESP.Settings.Crew.Color
-            end
-            if Drawings.Tracer then
-                Drawings.Tracer.Color = ESP.Settings.Tracer.Color
-            end
-            if Drawings.TracerOutline then
-                Drawings.TracerOutline.Color = ESP.Settings.Tracer.OutlineColor
-            end
-        end
-        if PlayerData.Chams then
-            for _, Entry in pairs(PlayerData.Chams) do
-                local Cham = Entry and Entry.Adornment or nil
-                if Cham then
-                    Cham.Color3 = ESP.Settings.Chams.Color
-                    Cham.Transparency = ESP.Settings.Chams.Transparency
-                end
-            end
-        end
-        if PlayerData.Highlight then
-            PlayerData.Highlight.FillColor = ESP.Settings.Highlight.FillColor
-            PlayerData.Highlight.OutlineColor = ESP.Settings.Highlight.OutlineColor
-            PlayerData.Highlight.FillTransparency = ESP.Settings.Highlight.FillTransparency
-            PlayerData.Highlight.OutlineTransparency = ESP.Settings.Highlight.OutlineTransparency
-        end
-    end
-end
-function ESP:Configure(Config)
-    local function Merge(Target, Source)
-        for Index, Value in pairs(Source) do
-            if type(Value) == "table" and type(Target[Index]) == "table" then
-                Merge(Target[Index], Value)
-            else
-                Target[Index] = Value
-            end
-        end
-    end
-    local ColorOnly = true
-    local function NeedsRefresh(Target, Source)
-        for Key, Value in pairs(Source) do
-            local Current = Target[Key]
-            if type(Value) == "table" and type(Current) == "table" then
-                if NeedsRefresh(Current, Value) then
-                    return true
-                end
-            elseif typeof(Value) ~= "Color3" then
-                if Current ~= Value then
-                    return true
-                end
-            end
-        end
-        return false
-    end
-    if NeedsRefresh(self.Settings, Config) then
-        ColorOnly = false
-    end
-    Merge(self.Settings, Config)
-    if ColorOnly then
-        self:Update_ESP_Color()
-    else
-        self:Refresh()
-    end
-end
-function ESP:FadeAll()
-    for _, PlayerData in pairs(Data) do
-        pcall(FadeIn, PlayerData)
-    end
-end
+end,RunService,'unnamed render')
 ESP._Cleanup = function()
+    if not alive then return end
+    alive = false
+    for _, connection in ipairs(connections) do connection:Disconnect() end
+    for _, record in pairs(cache) do destroy(record) end
     for key in pairs(ESP.Previews) do ESP:DestroyPreview(key) end
-    for _, PlayerData in pairs(Data) do
-        for _, Connection in PlayerData.Connections do
-            if Connection then
-                pcall(function() Connection:Disconnect() end)
-            end
-        end
-        if PlayerData.RespawnConnection then
-            pcall(function() PlayerData.RespawnConnection:Disconnect() end)
-        end
-        for _, Drawing in PlayerData.Drawings do
-            if Drawing then
-                pcall(function() Drawing:Remove() end)
-            end
-        end
-        for _, Entry in PlayerData.Chams do
-            if Entry and Entry.Adornment then
-                pcall(function() Entry.Adornment:Destroy() end)
-            end
-        end
-        if PlayerData.Highlight then
-            pcall(function() PlayerData.Highlight:Destroy() end)
-        end
-        if PlayerData.ForceFieldBubble then pcall(function() PlayerData.ForceFieldBubble:Destroy() end) end
-    end
-    for _, Connection in SessionConnections do
-        if Connection then
-            pcall(function() Connection:Disconnect() end)
-        end
-    end
+    table.clear(cache)
+    gui:Destroy()
 end
+ESP.Cache, ESP.Utility = cache, utility
 return ESP
