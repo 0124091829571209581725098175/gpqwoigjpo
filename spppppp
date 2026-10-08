@@ -2,14 +2,20 @@ local previous = getgenv().ESP
 if type(previous) == 'table' and type(previous._Cleanup) == 'function' then pcall(previous._Cleanup) end
 local ESP: {[string]: any} = {Backend = 'Unnamed', StartupRevision = 2, PhowgBarHookRevision = 1, SupportsSpatialBarGradient = true, NativeBarGradients = true, PreviewRevision = 0, Previews = {}, CrewNames = {}, CrewIds = {}, CrewIcons = {}, CrewCounts = {}}
 ESP.PhowgBarHookRevision = 1
+ESP.NativeLabelSpacing = true
 getgenv().ESP = ESP
-local Players, RunService, CoreGui = game:GetService('Players'), game:GetService('RunService'), game:GetService('CoreGui')
+local Players, RunService, CoreGui, UserInputService = game:GetService('Players'), game:GetService('RunService'), game:GetService('CoreGui'), game:GetService('UserInputService')
 local LocalPlayer, Workspace = Players.LocalPlayer, workspace
 local SharedConnect = getgenv().PhowgSharedConnect
 ESP.SharedConnectProvider = SharedConnect
 local utility, connections, cache = {funcs = {}}, {}, {}
 local floor, clamp, exp, atan2 = math.floor, math.clamp, math.exp, math.atan2
 local white, black = Color3.new(1,1,1), Color3.new(0,0,0)
+local one2D, two2D = Vector2.new(1,1), Vector2.new(2,2)
+local lowerOffset, upperOffset = Vector3.new(0,1,0), Vector3.new(0,3,0)
+local defaultHealthTextOffset = Vector2.new(-28,0)
+local emptyBarSpacing = {Top = 0, Bottom = 0, Right = 0}
+local barKinds = {'Health','Armor'}
 ESP.BarWhiteColor = white
 local gui = Instance.new('ScreenGui')
 gui.Name, gui.IgnoreGuiInset, gui.ResetOnSpawn, gui.DisplayOrder = 'PhowgUnnamedESP', true, false, 9700
@@ -187,9 +193,15 @@ local function drawing(kind, owner)
         item.Size, item.Rotation = UDim2.fromOffset(delta.Magnitude,math.max(1,state.Thickness)), math.deg(atan2(delta.Y,delta.X))
     end
     local function remove() if native then native:Remove() else item:Destroy() end end
+    local function endpoints(_, from, to)
+        if state.From == from and state.To == to then return end
+        state.From, state.To = from, to
+        line()
+    end
     return setmetatable(proxy,{
         __index = function(_,key)
             if key == 'Remove' or key == 'Destroy' then return remove end
+            if key == 'SetEndpoints' then return endpoints end
             if key == 'TextBounds' then return kind == 'Text' and item.TextBounds or Vector2.zero end
             return state[key]
         end,
@@ -227,8 +239,11 @@ local function bind(record, character)
     record.CharacterConnections = {}
     for _, adornment in pairs(record.Chams or {}) do adornment:Destroy() end
     record.Chams = {}
+    record.ChamStates = {}
+    record.ChamsVisible = false
     if record.Highlight then record.Highlight:Destroy(); record.Highlight = nil end
     if record.ForceFieldBubble then record.ForceFieldBubble:Destroy(); record.ForceFieldBubble = nil end
+    record.HighlightState, record.ForceFieldState = nil, nil
     record.Character, record.Parts, record.LastHealth, record.LastArmor = character, {}, nil, nil
     local function refresh()
         record.Root = character and character:FindFirstChild('HumanoidRootPart')
@@ -236,16 +251,18 @@ local function bind(record, character)
         record.Humanoid = character and character:FindFirstChildOfClass('Humanoid')
         record.ArmorValue = getArmor(character)
         record.EquippedTool = character and character:FindFirstChildOfClass('Tool')
+        record.ForceFieldInstance = character and character:FindFirstChildOfClass('ForceField')
+        record.ForceFieldValue = character and (character:FindFirstChild('Forcefield') or character:FindFirstChild('ForceField'))
     end
     local function added(part)
         if part:IsA('BasePart') then record.Parts[part] = true end
-        refresh()
+        if part.Name == 'Armor' and part.Parent and part.Parent.Name == 'BodyEffects' and part.Parent.Parent == character then record.ArmorValue = part end
     end
     local function removed(part)
         record.Parts[part] = nil
         local adornment = record.Chams and record.Chams[part]
-        if adornment then adornment:Destroy(); record.Chams[part] = nil end
-        refresh()
+        if adornment then adornment:Destroy(); record.Chams[part], record.ChamStates[part] = nil, nil end
+        if part == record.ArmorValue then record.ArmorValue = nil end
     end
     if character then
         for _, part in ipairs(character:GetDescendants()) do if part:IsA('BasePart') then record.Parts[part] = true end end
@@ -258,11 +275,12 @@ local function bind(record, character)
 end
 function utility.funcs.render(player, record)
     if record.Drawings then return end
-    record.Drawings, record.Gradients, record.Chams = {}, {}, {}
+    record.Drawings, record.Gradients = {}, {}
+    record.Chams, record.ChamStates = record.Chams or {}, record.ChamStates or {}
     local draws = record.Drawings
     for _, name in ipairs({'Box','BoxOutline','BoxInline'}) do draws[name] = drawing('Square'); draws[name].ZIndex = 3 end
     for _, name in ipairs({'Name','Distance','ToolText','HealthText','WantedText','ForceFieldText','CrewText','CrewCount'}) do draws[name] = drawing('Text'); draws[name].ZIndex = 5; draws[name].Center = name == 'Name' or name == 'Distance' or name == 'ToolText' or name == 'CrewText' end
-    for _, kind in ipairs({'Health','Armor'}) do
+    for _, kind in ipairs(barKinds) do
         draws[kind .. 'BarOutline'], draws[kind .. 'Bar'] = drawing('Bar'), drawing('Bar')
         draws[kind .. 'BarOutline'].ZIndex, draws[kind .. 'Bar'].ZIndex = 3, 4
         local gradient = Instance.new('UIGradient')
@@ -280,12 +298,17 @@ function utility.funcs.render(player, record)
 end
 function utility.funcs.clear_esp(player, record)
     record = record or cache[player]
-    if not record then return end
+    if not record or not record.Rendering then return end
     record.Rendering = false
+    record.DrawingVisible = false
     for _, object in pairs(record.Drawings or {}) do object.Visible = false end
-    for _, object in pairs(record.Chams or {}) do object.Visible = false end
-    if record.Highlight then record.Highlight.Enabled = false end
-    if record.ForceFieldBubble then record.ForceFieldBubble.Visible = false end
+    for part, object in pairs(record.Chams or {}) do
+        local state = record.ChamStates and record.ChamStates[part]
+        if not state or state.Visible then object.Visible = false; if state then state.Visible = false end end
+    end
+    record.ChamsVisible = false
+    if record.Highlight then record.Highlight.Enabled = false; if record.HighlightState then record.HighlightState.Enabled = false end end
+    if record.ForceFieldBubble then record.ForceFieldBubble.Visible = false; if record.ForceFieldState then record.ForceFieldState.Visible = false end end
 end
 local function destroy(record)
     for _, connection in ipairs(record.Connections or {}) do connection:Disconnect() end
@@ -320,12 +343,14 @@ function ESP:SetBarGradient(record, kind, first, last, horizontal, inverted, shi
         gradient.Color = ColorSequence.new(start,finish)
         previous.First, previous.Last, previous.Shift = first, last, shift
     end
-    gradient.Rotation = horizontal and (inverted and 180 or 0) or (inverted and 270 or 90)
-    gradient.Enabled = self.Settings.Bars[kind].Gradient == true
+    local rotation, active = horizontal and (inverted and 180 or 0) or (inverted and 270 or 90), self.Settings.Bars[kind].Gradient == true
+    if previous.Rotation ~= rotation then gradient.Rotation, previous.Rotation = rotation, rotation end
+    if previous.Enabled ~= active then gradient.Enabled, previous.Enabled = active, active end
 end
 local function effects(player, record, protected, color)
     local settings, root = ESP.Settings, record.Root
     if settings.Chams.Enabled then
+        record.ChamsVisible = true
         for part in pairs(record.Parts) do
             if part.Parent and part.Name ~= 'HumanoidRootPart' then
                 local adornment = record.Chams[part]
@@ -334,22 +359,49 @@ local function effects(player, record, protected, color)
                     adornment.Adornee, adornment.AlwaysOnTop, adornment.ZIndex, adornment.Parent = part, true, 1, record.Character
                     record.Chams[part] = adornment
                 end
-                adornment.Size, adornment.Color3, adornment.Transparency, adornment.Visible = part.Size + settings.Chams.Offset, color or settings.Chams.Color, settings.Chams.Transparency, true
+                local state = record.ChamStates[part]
+                if not state then state = {}; record.ChamStates[part] = state end
+                local partSize, offset, tint, transparency = part.Size, settings.Chams.Offset, color or settings.Chams.Color, settings.Chams.Transparency
+                if state.Size ~= partSize or state.Offset ~= offset then adornment.Size = partSize + offset; state.Size, state.Offset = partSize, offset end
+                if state.Color ~= tint then adornment.Color3, state.Color = tint, tint end
+                if state.Transparency ~= transparency then adornment.Transparency, state.Transparency = transparency, transparency end
+                if not state.Visible then adornment.Visible, state.Visible = true, true end
             end
         end
-    else for _, adornment in pairs(record.Chams) do adornment.Visible = false end end
+    elseif record.ChamsVisible then
+        for part, adornment in pairs(record.Chams) do
+            local state = record.ChamStates[part]
+            if not state or state.Visible then adornment.Visible = false; if state then state.Visible = false end end
+        end
+        record.ChamsVisible = false
+    end
     if settings.Highlight.Enabled then
-        if not record.Highlight then record.Highlight = Instance.new('Highlight'); record.Highlight.Parent = record.Character end
-        local highlight = record.Highlight
-        highlight.Adornee, highlight.Enabled, highlight.DepthMode = record.Character, true, settings.Highlight.DepthMode
-        highlight.FillColor, highlight.OutlineColor, highlight.FillTransparency, highlight.OutlineTransparency = color or settings.Highlight.FillColor, color or settings.Highlight.OutlineColor, settings.Highlight.FillTransparency, settings.Highlight.OutlineTransparency
-    elseif record.Highlight then record.Highlight.Enabled = false end
+        if not record.Highlight then
+            record.Highlight = Instance.new('Highlight')
+            record.Highlight.Adornee, record.Highlight.Parent = record.Character, record.Character
+            record.HighlightState = {}
+        end
+        local highlight, state = record.Highlight, record.HighlightState
+        local fill, outline = color or settings.Highlight.FillColor, color or settings.Highlight.OutlineColor
+        if not state.Enabled then highlight.Enabled, state.Enabled = true, true end
+        if state.DepthMode ~= settings.Highlight.DepthMode then highlight.DepthMode, state.DepthMode = settings.Highlight.DepthMode, settings.Highlight.DepthMode end
+        if state.FillColor ~= fill then highlight.FillColor, state.FillColor = fill, fill end
+        if state.OutlineColor ~= outline then highlight.OutlineColor, state.OutlineColor = outline, outline end
+        if state.FillTransparency ~= settings.Highlight.FillTransparency then highlight.FillTransparency, state.FillTransparency = settings.Highlight.FillTransparency, settings.Highlight.FillTransparency end
+        if state.OutlineTransparency ~= settings.Highlight.OutlineTransparency then highlight.OutlineTransparency, state.OutlineTransparency = settings.Highlight.OutlineTransparency, settings.Highlight.OutlineTransparency end
+    elseif record.Highlight and record.HighlightState.Enabled then record.Highlight.Enabled, record.HighlightState.Enabled = false, false end
     if protected and settings.ForceField.Enabled then
-        if not record.ForceFieldBubble then record.ForceFieldBubble = Instance.new('SphereHandleAdornment'); record.ForceFieldBubble.Parent = record.Character end
-        local bubble = record.ForceFieldBubble
-        bubble.Adornee, bubble.Radius, bubble.AlwaysOnTop, bubble.ZIndex = root, 4, true, 1
-        bubble.Color3, bubble.Transparency, bubble.Visible = settings.ForceField.Color, settings.ForceField.Transparency, true
-    elseif record.ForceFieldBubble then record.ForceFieldBubble.Visible = false end
+        if not record.ForceFieldBubble then
+            record.ForceFieldBubble = Instance.new('SphereHandleAdornment')
+            record.ForceFieldBubble.Radius, record.ForceFieldBubble.AlwaysOnTop, record.ForceFieldBubble.ZIndex, record.ForceFieldBubble.Parent = 4, true, 1, record.Character
+            record.ForceFieldState = {}
+        end
+        local bubble, state = record.ForceFieldBubble, record.ForceFieldState
+        if state.Root ~= root then bubble.Adornee, state.Root = root, root end
+        if state.Color ~= settings.ForceField.Color then bubble.Color3, state.Color = settings.ForceField.Color, settings.ForceField.Color end
+        if state.Transparency ~= settings.ForceField.Transparency then bubble.Transparency, state.Transparency = settings.ForceField.Transparency, settings.ForceField.Transparency end
+        if not state.Visible then bubble.Visible, state.Visible = true, true end
+    elseif record.ForceFieldBubble and record.ForceFieldState.Visible then record.ForceFieldBubble.Visible, record.ForceFieldState.Visible = false, false end
 end
 local function label(draw, shown, text, position, color, size)
     draw.Visible = shown == true
@@ -410,7 +462,7 @@ local function GetIconData(Key)
         return nil
     end
     if IconCache[Key] ~= nil then
-        return IconCache[Key]
+        return IconCache[Key] or nil
     end
     if IconTable == nil then
         FetchIcons()
@@ -418,6 +470,7 @@ local function GetIconData(Key)
     end
     local Entry = IconTable[Key]
     if type(Entry) ~= "string" or #Entry < 100 then
+        IconCache[Key] = false
         return nil
     end
     local Ok, Decoded = pcall(base64_decode, Entry)
@@ -425,68 +478,128 @@ local function GetIconData(Key)
         IconCache[Key] = Decoded
         return Decoded
     end
+    IconCache[Key] = false
     return nil
 end
-function utility.funcs.update(player, record, delta)
+local function frameContext(delta)
+    local settings, camera, environment = ESP.Settings, Workspace.CurrentCamera, getgenv()
+    local clientPosition = environment.PhowgClientPos
+    if typeof(clientPosition) == 'CFrame' then clientPosition = clientPosition.Position end
+    if typeof(clientPosition) ~= 'Vector3' then clientPosition = camera and camera.CFrame.Position end
+    local origin
+    if camera and settings.Tracer.Enabled then
+        local viewport, selected = camera.ViewportSize, settings.Tracer.Origin
+        if selected == 'Mouse' then origin = UserInputService:GetMouseLocation()
+        elseif selected == 'Center' then origin = Vector2.new(viewport.X/2,viewport.Y/2)
+        elseif selected == 'Below' then origin = Vector2.new(viewport.X/2,viewport.Y)
+        else origin = Vector2.new(viewport.X/2,0) end
+    end
+    return {Camera = camera, ClientPosition = clientPosition, TracerOrigin = origin, Wanted = environment.PhowgGetWanted, Now = tick(), Delta = delta or 1/60, SmoothAlpha = 1-exp(-(delta or 1/60)*3), TwoDimensional = settings.Box.Enabled or settings.Name.Enabled or settings.Crew.Enabled or settings.Distance.Enabled or settings.ToolText.Enabled or settings.WeaponIcon.Enabled or settings.HealthText.Enabled or settings.Wanted.Enabled or settings.ForceField.Enabled or settings.Tracer.Enabled or settings.Image.Enabled or settings.Bars.Health.Enabled or settings.Bars.Armor.Enabled}
+end
+function utility.funcs.update(player, record, delta, frame)
     record = record or cache[player]
     if not record then return end
-    if not enabled or player == LocalPlayer and not ESP.Settings.Self.Enabled and not record.Preview then utility.funcs.clear_esp(player,record); return end
+    local settings = ESP.Settings
+    if not enabled or player == LocalPlayer and not settings.Self.Enabled and not record.Preview then utility.funcs.clear_esp(player,record); return end
+    frame = frame or frameContext(delta)
     local character = record.Character
     local root, humanoid = record.Root, record.Humanoid
-    local camera = record.PreviewCamera or Workspace.CurrentCamera
+    local camera = record.PreviewCamera or frame.Camera
     if not character or not character.Parent or not root or not root.Parent or not humanoid or not camera or humanoid.Health <= 0 then utility.funcs.clear_esp(player,record); return end
-    local hrp2D, onScreen = camera:WorldToViewportPoint(root.Position)
+    local rootPosition = root.Position
+    local hrp2D, onScreen = camera:WorldToViewportPoint(rootPosition)
     if not onScreen or hrp2D.Z <= 0 then utility.funcs.clear_esp(player,record); return end
-    local clientPosition = getgenv().PhowgClientPos
-    if typeof(clientPosition) == 'CFrame' then clientPosition = clientPosition.Position end
-    if typeof(clientPosition) ~= 'Vector3' then clientPosition = camera.CFrame.Position end
-    local distance = record.PreviewDistance or (root.Position - clientPosition).Magnitude
-    local settings = ESP.Settings
+    local distance = record.PreviewDistance
+    if distance == nil and (settings.Distance.Enabled or settings.DistanceLimit.Enabled) then distance = (rootPosition - (frame.ClientPosition or camera.CFrame.Position)).Magnitude end
     if settings.DistanceLimit.Enabled and distance > settings.DistanceLimit.MaxDistance then utility.funcs.clear_esp(player,record); return end
-    local charSize = (camera:WorldToViewportPoint(root.Position - Vector3.new(0,1,0)).Y - camera:WorldToViewportPoint(root.Position + Vector3.new(0,3,0)).Y) / 2
+    local color = settings.Target.Enabled and (ESP.ActiveTarget == player or record.Preview and ESP.ActiveTarget ~= nil) and settings.Target.Color or nil
+    local protected = false
+    if settings.ForceField.Enabled then
+        if record.SourceCharacter and record.SourceCharacter ~= character then protected = ESP:HasForceField(record.SourceCharacter)
+        else
+            local forceField, value = record.ForceFieldInstance, record.ForceFieldValue
+            protected = forceField and forceField.Parent == character or value and value.Parent == character and value:IsA('BoolValue') and value.Value == true or false
+        end
+    end
+    if not frame.TwoDimensional then
+        record.Rendering = true
+        if record.DrawingVisible then for _, draw in pairs(record.Drawings) do draw.Visible = false end; record.DrawingVisible = false end
+        effects(player,record,protected,color)
+        return
+    end
+    local charSize = (camera:WorldToViewportPoint(rootPosition - lowerOffset).Y - camera:WorldToViewportPoint(rootPosition + upperOffset).Y) / 2
     if charSize <= 0 or charSize ~= charSize then utility.funcs.clear_esp(player,record); return end
     local size = Vector2.new(floor(charSize * 1.5),floor(charSize * 3.2))
     local position = Vector2.new(floor(hrp2D.X - charSize * 1.5 / 2),floor(hrp2D.Y - charSize * 3 / 2))
+    local spacing = record.PhowgBarSpacing or emptyBarSpacing
+    local topSpace, bottomSpace, rightSpace = spacing.Top or 0, spacing.Bottom or 0, math.max(4,spacing.Right or 0)
+    record.PhowgAppliedBarSpacing = spacing
     utility.funcs.render(player,record)
     local draws = record.Drawings
+    record.DrawingVisible = true
     record.LayoutPosition, record.LayoutSize, record.Rendering = position, size, true
-    record.Fake_Health, record.Fake_MaxHealth = humanoid.Health, math.max(1,humanoid.MaxHealth)
+    local health, maxHealth = humanoid.Health, humanoid.MaxHealth
+    record.Fake_Health, record.Fake_MaxHealth = health, math.max(1,maxHealth)
     record.Fake_Armor = record.ArmorValue and record.ArmorValue.Parent and record.ArmorValue.Value or 0
-    local color = settings.Target.Enabled and (ESP.ActiveTarget == player or record.Preview and ESP.ActiveTarget ~= nil) and settings.Target.Color or nil
     local fading = settings.Animation.Mode == 'fading'
-    local opacity = fading and math.min(1,(record.Opacity or 0) + (delta or 1/60) * 8) or 1
+    local opacity = fading and math.min(1,(record.Opacity or 0) + frame.Delta * 8) or 1
     record.Opacity = opacity
-    for _, draw in pairs(draws) do draw.Transparency = opacity end
-    draws.Box.Visible, draws.BoxOutline.Visible, draws.BoxInline.Visible = settings.Box.Enabled, settings.Box.Enabled, settings.Box.Enabled
-    draws.Box.Position, draws.Box.Size, draws.Box.Color, draws.Box.Thickness = position, size, color or settings.Box.Colors.Top, settings.Box.Thickness
-    draws.BoxOutline.Position, draws.BoxOutline.Size = position - Vector2.new(1,1), size + Vector2.new(2,2)
-    draws.BoxInline.Position, draws.BoxInline.Size = position + Vector2.new(1,1), size - Vector2.new(2,2)
-    draws.Image.Visible, draws.Image.Position, draws.Image.Size, draws.Image.Color, draws.Image.Transparency = settings.Image.Enabled, position, size, color or settings.Image.Color or white, 0.15 * opacity
-    record.ImageGradient.Enabled = settings.Image.Data == 'Gradient'
-    local name = settings.Name.Use_Both_Name and (player.DisplayName .. ' (@' .. player.Name .. ')') or settings.Name.Use_Display_Name and player.DisplayName or player.Name
-    label(draws.Name,settings.Name.Enabled,name,position + Vector2.new(size.X/2,-settings.Misc.MainSize-4),color or settings.Name.Color,settings.Misc.MainSize)
-    local below = size.Y + 4
-    label(draws.Distance,settings.Distance.Enabled,string.format('[%.0fm]',distance * 0.28),position + Vector2.new(size.X/2,below),color or settings.Distance.Color,settings.Misc.SmallSize)
-    if settings.Distance.Enabled then below = below + 14 end
-    local tool = record.EquippedTool
-    label(draws.ToolText,settings.ToolText.Enabled,tool and tool.Name or 'none',position + Vector2.new(size.X/2,below),color or settings.ToolText.Color,settings.Misc.SmallSize)
-    if settings.ToolText.Enabled then below = below + 14 end
-    draws.WeaponIcon.Visible = false
-    if settings.WeaponIcon.Enabled and tool then
-        local image = GetIconData(IconKey(tool.Name))
-        if image then draws.WeaponIcon.Data, draws.WeaponIcon.Position, draws.WeaponIcon.Size, draws.WeaponIcon.Color, draws.WeaponIcon.Visible = image, position + Vector2.new(size.X/2-20,below), Vector2.new(40,20), color or settings.WeaponIcon.Color, true end
+    if record.DrawingOpacity ~= opacity then
+        for name, draw in pairs(draws) do if name ~= 'Image' then draw.Transparency = opacity end end
+        record.DrawingOpacity = opacity
     end
+    local boxEnabled = settings.Box.Enabled
+    draws.Box.Visible, draws.BoxOutline.Visible, draws.BoxInline.Visible = boxEnabled, boxEnabled, boxEnabled
+    if boxEnabled then
+        draws.Box.Position, draws.Box.Size, draws.Box.Color, draws.Box.Thickness = position, size, color or settings.Box.Colors.Top, settings.Box.Thickness
+        draws.BoxOutline.Position, draws.BoxOutline.Size = position - one2D, size + two2D
+        draws.BoxInline.Position, draws.BoxInline.Size = position + one2D, size - two2D
+    end
+    draws.Image.Visible = settings.Image.Enabled
+    if settings.Image.Enabled then
+        draws.Image.Position, draws.Image.Size, draws.Image.Color, draws.Image.Transparency = position, size, color or settings.Image.Color or white, 0.15 * opacity
+        local gradientEnabled = settings.Image.Data == 'Gradient'
+        if record.ImageGradientEnabled ~= gradientEnabled then record.ImageGradient.Enabled, record.ImageGradientEnabled = gradientEnabled, gradientEnabled end
+    end
+    if settings.Name.Enabled then
+        local both, display, username = settings.Name.Use_Both_Name, settings.Name.Use_Display_Name, player.Name
+        if record.NameBoth ~= both or record.NameDisplay ~= display or record.PlayerName ~= username or record.DisplayName ~= player.DisplayName or not record.NameText then
+            record.NameBoth, record.NameDisplay, record.PlayerName, record.DisplayName = both, display, username, player.DisplayName
+            record.NameText = both and (player.DisplayName .. ' (@' .. username .. ')') or display and player.DisplayName or username
+        end
+        label(draws.Name,true,record.NameText,position + Vector2.new(size.X/2,-settings.Misc.MainSize-4-topSpace),color or settings.Name.Color,settings.Misc.MainSize)
+    else draws.Name.Visible = false end
+    local below = size.Y + 4 + bottomSpace
+    if settings.Distance.Enabled then
+        if record.DistanceValue ~= distance then record.DistanceValue, record.DistanceText = distance, string.format('[%.0fm]',distance * 0.28) end
+        label(draws.Distance,true,record.DistanceText,position + Vector2.new(size.X/2,below),color or settings.Distance.Color,settings.Misc.SmallSize)
+        below = below + 14
+    else draws.Distance.Visible = false end
+    local tool = record.EquippedTool
+    if settings.ToolText.Enabled then
+        label(draws.ToolText,true,tool and tool.Name or 'none',position + Vector2.new(size.X/2,below),color or settings.ToolText.Color,settings.Misc.SmallSize)
+        below = below + 14
+    else draws.ToolText.Visible = false end
+    local weaponVisible = false
+    if settings.WeaponIcon.Enabled and tool then
+        if record.IconToolName ~= tool.Name then record.IconToolName, record.IconKey = tool.Name, IconKey(tool.Name) end
+        local image = GetIconData(record.IconKey)
+        if image then
+            draws.WeaponIcon.Data, draws.WeaponIcon.Position, draws.WeaponIcon.Size, draws.WeaponIcon.Color = image, position + Vector2.new(size.X/2-20,below), Vector2.new(40,20), color or settings.WeaponIcon.Color
+            weaponVisible = true
+        end
+    end
+    draws.WeaponIcon.Visible = weaponVisible
     local crew = ESP.CrewNames[player]
     local crewOn = settings.Crew.Enabled and type(crew) == 'string' and crew ~= ''
-    label(draws.CrewText,crewOn,crew or '',position + Vector2.new(size.X/2,-32),color or settings.Crew.Color,settings.Misc.SmallSize)
+    if crewOn then label(draws.CrewText,true,crew,position + Vector2.new(size.X/2,-32-topSpace),color or settings.Crew.Color,settings.Misc.SmallSize) else draws.CrewText.Visible = false end
     local crewId = ESP.CrewIds[player]
-    label(draws.CrewCount,crewOn and settings.Crew.Count,'[' .. tostring(ESP.CrewCounts[crewId] or 0) .. ']',position + Vector2.new(size.X+4,-32),color or settings.Crew.Color,settings.Misc.SmallSize)
+    if crewOn and settings.Crew.Count then label(draws.CrewCount,true,'[' .. tostring(ESP.CrewCounts[crewId] or 0) .. ']',position + Vector2.new(size.X+4,-32-topSpace),color or settings.Crew.Color,settings.Misc.SmallSize) else draws.CrewCount.Visible = false end
     local icon = crewId and ESP.CrewIcons[crewId]
-    draws.CrewIcon.Visible = false
-    if crewOn and type(icon) == 'string' and icon ~= '' then
-        draws.CrewIcon.Data, draws.CrewIcon.Position, draws.CrewIcon.Size, draws.CrewIcon.Visible = icon, position + Vector2.new(-18,-32), Vector2.new(14,14), true
-    end
-    for index, kind in ipairs({'Health','Armor'}) do
+    local crewIconVisible = crewOn and type(icon) == 'string' and icon ~= ''
+    if crewIconVisible then draws.CrewIcon.Data, draws.CrewIcon.Position, draws.CrewIcon.Size = icon, position + Vector2.new(-18,-32-topSpace), Vector2.new(14,14) end
+    draws.CrewIcon.Visible = crewIconVisible == true
+    for index, kind in ipairs(barKinds) do
         local barSettings, value = settings.Bars[kind], kind == 'Health' and record.Fake_Health or record.Fake_Armor
         local bar, outline = draws[kind .. 'Bar'], draws[kind .. 'BarOutline']
         local shown = barSettings.Enabled and (kind ~= 'Armor' or not barSettings.Hide_If_Empty or value > 0)
@@ -495,7 +608,7 @@ function utility.funcs.update(player, record, delta)
             local maximum = kind == 'Health' and record.Fake_MaxHealth or 130
             local ratio = clamp(value/maximum,0,1)
             local prior = record['Last' .. kind] or ratio
-            local smooth = prior + (ratio-prior) * (1-exp(-(delta or 1/60)*3))
+            local smooth = prior + (ratio-prior) * frame.SmoothAlpha
             record['Last' .. kind] = smooth
             local x = position.X - (index == 1 and 7 or 13)
             outline.Position, outline.Size = Vector2.new(x-1,position.Y-1), Vector2.new(5,size.Y+2)
@@ -503,31 +616,21 @@ function utility.funcs.update(player, record, delta)
             ESP:SetBarGradient(record,kind,color or barSettings.BaseColor or barSettings.Colors[1],color or barSettings.GradientColor or barSettings.Colors[2] or bar.Color,false,false,0)
         end
     end
-    label(draws.HealthText,settings.HealthText.Enabled and (not settings.HealthText.HideFullHealth or humanoid.Health < humanoid.MaxHealth),tostring(floor(humanoid.Health)),position + Vector2.new(-28,0),color or settings.HealthText.Color,settings.Misc.SmallSize)
+    if settings.HealthText.Enabled and (not settings.HealthText.HideFullHealth or health < maxHealth) then label(draws.HealthText,true,tostring(floor(health)),position + (spacing.HealthText or defaultHealthTextOffset),color or settings.HealthText.Color,settings.Misc.SmallSize) else draws.HealthText.Visible = false end
     local wanted = 0
-    if settings.Wanted.Enabled then
-        local fn = getgenv().PhowgGetWanted
-        if fn then local ok, value = pcall(fn,player); if ok then wanted = tonumber(value) or 0 end end
-    end
-    label(draws.WantedText,settings.Wanted.Enabled and wanted > 0,'WANTED / ' .. tostring(floor(wanted)),position + Vector2.new(size.X+4,0),color or settings.Wanted.Color,settings.Misc.SmallSize)
-    local protected = ESP:HasForceField(record.SourceCharacter or character)
-    label(draws.ForceFieldText,settings.ForceField.Enabled and protected,'FORCEFIELD',position + Vector2.new(size.X+4,14),settings.ForceField.Color,settings.Misc.SmallSize)
-    draws.Tracer.Visible, draws.TracerOutline.Visible = settings.Tracer.Enabled, settings.Tracer.Enabled and settings.Tracer.Outline
-    if settings.Tracer.Enabled then
-        local from = record.TracerOrigin
-        if not from then
-            local viewport, origin = camera.ViewportSize, settings.Tracer.Origin
-            if origin == 'Mouse' then from = game:GetService('UserInputService'):GetMouseLocation()
-            elseif origin == 'Center' then from = Vector2.new(viewport.X/2,viewport.Y/2)
-            elseif origin == 'Below' then from = Vector2.new(viewport.X/2,viewport.Y)
-            else from = Vector2.new(viewport.X/2,0) end
-        end
-        local to = position + Vector2.new(size.X/2,size.Y/2)
-        draws.Tracer.From, draws.Tracer.To, draws.Tracer.Color, draws.Tracer.Thickness = from, to, color or settings.Tracer.Color, 1
-        draws.TracerOutline.From, draws.TracerOutline.To, draws.TracerOutline.Color, draws.TracerOutline.Thickness = from, to, black, 3
+    if settings.Wanted.Enabled and frame.Wanted then local ok, value = pcall(frame.Wanted,player); if ok then wanted = tonumber(value) or 0 end end
+    if settings.Wanted.Enabled and wanted > 0 then label(draws.WantedText,true,'WANTED / ' .. tostring(floor(wanted)),position + Vector2.new(size.X+rightSpace,0),color or settings.Wanted.Color,settings.Misc.SmallSize) else draws.WantedText.Visible = false end
+    if settings.ForceField.Enabled and protected then label(draws.ForceFieldText,true,'FORCEFIELD',position + Vector2.new(size.X+rightSpace,14),settings.ForceField.Color,settings.Misc.SmallSize) else draws.ForceFieldText.Visible = false end
+    local tracerEnabled, outlineEnabled = settings.Tracer.Enabled, settings.Tracer.Enabled and settings.Tracer.Outline
+    draws.Tracer.Visible, draws.TracerOutline.Visible = tracerEnabled, outlineEnabled
+    if tracerEnabled then
+        local from, to = record.TracerOrigin or frame.TracerOrigin, position + Vector2.new(size.X/2,size.Y/2)
+        draws.Tracer.Color, draws.Tracer.Thickness = color or settings.Tracer.Color, 1
+        draws.Tracer:SetEndpoints(from,to)
+        if outlineEnabled then draws.TracerOutline.Color, draws.TracerOutline.Thickness = black, 3; draws.TracerOutline:SetEndpoints(from,to) end
     end
     effects(player,record,protected,color)
-    if ESP.PhowgRenderBars then ESP.PhowgRenderBars(ESP,player,record,tick()) end
+    if ESP.PhowgRenderBars then ESP.PhowgRenderBars(ESP,player,record,frame.Now) end
 end
 function ESP:Configure(config)
     local function merge(target, source)
@@ -588,8 +691,9 @@ connect(Players.PlayerRemoving,function(player)
 end,Players,'unnamed player removed')
 connect(RunService.Heartbeat,function(delta)
     if not alive or not enabled then return end
+    local frame = frameContext(delta)
     for player, record in pairs(cache) do
-        local ok, err = pcall(utility.funcs.update,player,record,delta)
+        local ok, err = pcall(utility.funcs.update,player,record,delta,frame)
         if not ok then
             utility.funcs.clear_esp(player,record)
             if tick()-(record.ErrorAt or -math.huge)>5 then record.ErrorAt = tick(); warn('[Phowg] unnamed ESP: ' .. tostring(err)) end
