@@ -389,6 +389,7 @@ local function FetchIcons()
         if game.HttpGet then
             local Ok, Raw = pcall(function() return game:HttpGet(IconsURL) end)
             if Ok and type(Raw) == "string" and #Raw > 100 then
+                Raw = Raw:gsub('^' .. string.char(239,187,191),'')
                 local Loader = loadstring or load
                 if Loader ~= nil then
                     local Ok2, Fn = pcall(Loader, Raw .. "\nreturn images")
