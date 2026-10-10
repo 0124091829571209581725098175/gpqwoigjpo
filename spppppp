@@ -1,6 +1,6 @@
 local previous = getgenv().ESP
 if type(previous) == 'table' and type(previous._Cleanup) == 'function' then pcall(previous._Cleanup) end
-local ESP: {[string]: any} = {Backend = 'Unnamed', StartupRevision = 3, PhowgBarHookRevision = 1, SupportsSpatialBarGradient = true, NativeBarGradients = true, CrewNames = {}, CrewIds = {}, CrewIcons = {}, CrewCounts = {}}
+local ESP: {[string]: any} = {Backend = 'Unnamed', StartupRevision = 4, PhowgBarHookRevision = 1, SupportsSpatialBarGradient = true, NativeBarGradients = true, CrewNames = {}, CrewIds = {}, CrewIcons = {}, CrewCounts = {}}
 ESP.PhowgBarHookRevision = 1
 ESP.NativeLabelSpacing = true
 getgenv().ESP = ESP
@@ -484,6 +484,7 @@ local function FetchIcons()
             end
         end
         IconPending, IconRetryAt = false, tick() + 10
+        if sharedIcons.ReadyEvent then sharedIcons.ReadyEvent:Fire(IconTable ~= nil) end
     end)
 end
 local function GetIconData(Key)
@@ -510,6 +511,35 @@ local function GetIconData(Key)
     IconCache[Key] = false
     return nil
 end
+sharedIcons.GuiAssets = sharedIcons.GuiAssets or {}
+sharedIcons.ReadyEvent = sharedIcons.ReadyEvent or Instance.new('BindableEvent')
+function ESP:GetWeaponIconAsset(toolName)
+    local key = IconKey(toolName)
+    if not key then return nil end
+    if sharedIcons.GuiAssets[key] then return sharedIcons.GuiAssets[key] end
+    local bytes = GetIconData(key)
+    if not bytes then return nil end
+    if bytes:sub(1, 13) == 'rbxassetid://' then return bytes end
+    local asset = getcustomasset or getsynasset
+    if type(asset) ~= 'function' or type(writefile) ~= 'function' or type(makefolder) ~= 'function' or type(isfolder) ~= 'function' then return nil end
+    local ok, image = pcall(function()
+        if not isfolder('PhowgHosted') then makefolder('PhowgHosted') end
+        if not isfolder('PhowgHosted/WeaponIcons') then makefolder('PhowgHosted/WeaponIcons') end
+        local path = 'PhowgHosted/WeaponIcons/' .. key .. '.png'
+        writefile(path, bytes)
+        return asset(path)
+    end)
+    if ok and type(image) == 'string' and image ~= '' then sharedIcons.GuiAssets[key] = image; return image end
+    return nil
+end
+function ESP:WatchWeaponIcons(callback)
+    if IconTable then callback(); return nil end
+    local connection = sharedIcons.ReadyEvent.Event:Connect(callback)
+    FetchIcons()
+    return connection
+end
+ESP.PhowgWeaponIconAssets = true
+
 local function frameContext(delta)
     local settings, camera, environment = ESP.Settings, Workspace.CurrentCamera, getgenv()
     local clientPosition = environment.PhowgClientPos
