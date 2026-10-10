@@ -1,6 +1,6 @@
 local previous = getgenv().ESP
 if type(previous) == 'table' and type(previous._Cleanup) == 'function' then pcall(previous._Cleanup) end
-local ESP: {[string]: any} = {Backend = 'Unnamed', StartupRevision = 2, PhowgBarHookRevision = 1, SupportsSpatialBarGradient = true, NativeBarGradients = true, PreviewRevision = 0, Previews = {}, CrewNames = {}, CrewIds = {}, CrewIcons = {}, CrewCounts = {}}
+local ESP: {[string]: any} = {Backend = 'Unnamed', StartupRevision = 3, PhowgBarHookRevision = 1, SupportsSpatialBarGradient = true, NativeBarGradients = true, CrewNames = {}, CrewIds = {}, CrewIcons = {}, CrewCounts = {}}
 ESP.PhowgBarHookRevision = 1
 ESP.NativeLabelSpacing = true
 getgenv().ESP = ESP
@@ -168,7 +168,7 @@ local function widget(class, parent)
     item.BackgroundTransparency, item.BackgroundColor3, item.BorderSizePixel, item.Visible, item.Parent = 1, white, 0, false, parent or gui
     return item
 end
-local function drawing(kind, owner)
+local function drawing(kind, owner, record)
     local native
     if (kind == 'Image') and Drawing and Drawing.new then
         local ok, result = pcall(function() return Drawing.new('Image') end)
@@ -182,7 +182,7 @@ local function drawing(kind, owner)
     elseif kind == 'Square' then
         stroke = Instance.new('UIStroke'); stroke.Color, stroke.Thickness, stroke.Parent = white, 1, item
     end
-    local state = {Visible = false, Position = Vector2.zero, Size = Vector2.zero, From = Vector2.zero, To = Vector2.zero, Color = white, Transparency = 1, Filled = kind == 'Bar' or kind == 'Line', Thickness = 1, Text = '', Center = false, Native = native, Object = item, Kind = kind}
+    local state: {[string]: any} = {Visible = false, Position = Vector2.zero, Size = Vector2.zero, From = Vector2.zero, To = Vector2.zero, Color = white, Transparency = 1, Filled = kind == 'Bar' or kind == 'Line', Thickness = 1, Text = '', Center = false, Native = native, Object = item, Kind = kind}
     if native then native.Visible, native.Transparency, native.Color = false, 1, white
     elseif state.Filled then item.BackgroundTransparency = 0 end
     local proxy = {}
@@ -206,6 +206,16 @@ local function drawing(kind, owner)
             return state[key]
         end,
         __newindex = function(_,key,value)
+            if key == 'Position' and record and not native then
+                state.Position = value
+                local offset = value - record.DrawOrigin
+                local previous = state.GuiPosition
+                if not previous or math.abs(previous.X - offset.X) > 0.000001 or math.abs(previous.Y - offset.Y) > 0.000001 then
+                    item.Position = UDim2.fromOffset(offset.X,offset.Y)
+                    state.GuiPosition = offset
+                end
+                return
+            end
             if state[key] == value then return end
             state[key] = value
             if native then native[key] = value; return end
@@ -276,18 +286,24 @@ end
 function utility.funcs.render(player, record)
     if record.Drawings then return end
     record.Drawings, record.Gradients = {}, {}
+    record.DrawOrigin = Vector2.zero
+    record.DrawFrame = widget('Frame')
+    record.DrawFrame.Size, record.DrawFrame.Visible = UDim2.fromOffset(0,0), true
+    local function draw(kind)
+        return drawing(kind,kind == 'Line' and gui or record.DrawFrame,kind ~= 'Line' and record or nil)
+    end
     record.Chams, record.ChamStates = record.Chams or {}, record.ChamStates or {}
     local draws = record.Drawings
-    for _, name in ipairs({'Box','BoxOutline','BoxInline'}) do draws[name] = drawing('Square'); draws[name].ZIndex = 3 end
-    for _, name in ipairs({'Name','Distance','ToolText','HealthText','WantedText','ForceFieldText','CrewText','CrewCount'}) do draws[name] = drawing('Text'); draws[name].ZIndex = 5; draws[name].Center = name == 'Name' or name == 'Distance' or name == 'ToolText' or name == 'CrewText' end
+    for _, name in ipairs({'Box','BoxOutline','BoxInline'}) do draws[name] = draw('Square'); draws[name].ZIndex = 3 end
+    for _, name in ipairs({'Name','Distance','ToolText','HealthText','WantedText','ForceFieldText','CrewText','CrewCount'}) do draws[name] = draw('Text'); draws[name].ZIndex = 5; draws[name].Center = name == 'Name' or name == 'Distance' or name == 'ToolText' or name == 'CrewText' end
     for _, kind in ipairs(barKinds) do
-        draws[kind .. 'BarOutline'], draws[kind .. 'Bar'] = drawing('Bar'), drawing('Bar')
+        draws[kind .. 'BarOutline'], draws[kind .. 'Bar'] = draw('Bar'), draw('Bar')
         draws[kind .. 'BarOutline'].ZIndex, draws[kind .. 'Bar'].ZIndex = 3, 4
         local gradient = Instance.new('UIGradient')
         gradient.Rotation, gradient.Parent = 90, draws[kind .. 'Bar'].Object
         record.Gradients[kind] = gradient
     end
-    draws.Tracer, draws.TracerOutline, draws.Image, draws.WeaponIcon, draws.CrewIcon = drawing('Line'), drawing('Line'), drawing('Bar'), drawing('Image'), drawing('Image')
+    draws.Tracer, draws.TracerOutline, draws.Image, draws.WeaponIcon, draws.CrewIcon = draw('Line'), draw('Line'), draw('Bar'), draw('Image'), draw('Image')
     local gradient = Instance.new('UIGradient')
     gradient.Rotation, gradient.Parent = 90, draws.Image.Object
     gradient.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(1,0)})
@@ -315,15 +331,28 @@ local function destroy(record)
     for _, connection in ipairs(record.CharacterConnections or {}) do connection:Disconnect() end
     for _, object in pairs(record.Drawings or {}) do object:Remove() end
     for _, object in pairs(record.Chams or {}) do object:Destroy() end
+    if record.DrawFrame then record.DrawFrame:Destroy() end
     if record.Highlight then record.Highlight:Destroy() end
     if record.ForceFieldBubble then record.ForceFieldBubble:Destroy() end
 end
+local function subscribe(record)
+    local player = record.Player
+    local wanted = enabled and (player ~= LocalPlayer or ESP.Settings.Self.Enabled)
+    if record.Subscribed == wanted then return end
+    record.Subscribed = wanted
+    for _, connection in ipairs(record.Connections) do connection:Disconnect() end
+    table.clear(record.Connections)
+    utility.funcs.clear_esp(player, record)
+    bind(record, wanted and player.Character or nil)
+    if wanted then
+        record.Connections[1] = connect(player.CharacterAdded,function(character) utility.funcs.clear_esp(player,record); bind(record,character) end,player,'unnamed respawn',true)
+    end
+end
 local function track(player)
     if cache[player] then return end
-    local record = {Player = player, Connections = {}}
+    local record = {Player = player, Connections = {}, Parts = {}}
     cache[player] = record
-    bind(record,player.Character)
-    record.Connections[1] = connect(player.CharacterAdded,function(character) utility.funcs.clear_esp(player,record); bind(record,character) end,player,'unnamed respawn',true)
+    subscribe(record)
 end
 function ESP:HasForceField(character)
     if not character then return false end
@@ -500,19 +529,19 @@ function utility.funcs.update(player, record, delta, frame)
     record = record or cache[player]
     if not record then return end
     local settings = ESP.Settings
-    if not enabled or player == LocalPlayer and not settings.Self.Enabled and not record.Preview then utility.funcs.clear_esp(player,record); return end
+    if not enabled or player == LocalPlayer and not settings.Self.Enabled then utility.funcs.clear_esp(player,record); return end
     frame = frame or frameContext(delta)
     local character = record.Character
     local root, humanoid = record.Root, record.Humanoid
-    local camera = record.PreviewCamera or frame.Camera
+    local camera = frame.Camera
     if not character or not character.Parent or not root or not root.Parent or not humanoid or not camera or humanoid.Health <= 0 then utility.funcs.clear_esp(player,record); return end
     local rootPosition = root.Position
     local hrp2D, onScreen = camera:WorldToViewportPoint(rootPosition)
     if not onScreen or hrp2D.Z <= 0 then utility.funcs.clear_esp(player,record); return end
-    local distance = record.PreviewDistance
-    if distance == nil and (settings.Distance.Enabled or settings.DistanceLimit.Enabled) then distance = (rootPosition - (frame.ClientPosition or camera.CFrame.Position)).Magnitude end
+    local distance
+    if settings.Distance.Enabled or settings.DistanceLimit.Enabled then distance = (rootPosition - (frame.ClientPosition or camera.CFrame.Position)).Magnitude end
     if settings.DistanceLimit.Enabled and distance > settings.DistanceLimit.MaxDistance then utility.funcs.clear_esp(player,record); return end
-    local color = settings.Target.Enabled and (ESP.ActiveTarget == player or record.Preview and ESP.ActiveTarget ~= nil) and settings.Target.Color or nil
+    local color = settings.Target.Enabled and (ESP.ActiveTarget == player) and settings.Target.Color or nil
     local protected = false
     if settings.ForceField.Enabled then
         if record.SourceCharacter and record.SourceCharacter ~= character then protected = ESP:HasForceField(record.SourceCharacter)
@@ -529,13 +558,17 @@ function utility.funcs.update(player, record, delta, frame)
     end
     local charSize = (camera:WorldToViewportPoint(rootPosition - lowerOffset).Y - camera:WorldToViewportPoint(rootPosition + upperOffset).Y) / 2
     if charSize <= 0 or charSize ~= charSize then utility.funcs.clear_esp(player,record); return end
-    local size = Vector2.new(floor(charSize * 1.5),floor(charSize * 3.2))
-    local position = Vector2.new(floor(hrp2D.X - charSize * 1.5 / 2),floor(hrp2D.Y - charSize * 3 / 2))
+    local size = Vector2.new(charSize * 1.5,charSize * 3.2)
+    local position = Vector2.new(hrp2D.X - charSize * 1.5 / 2,hrp2D.Y - charSize * 3 / 2)
     local spacing = record.PhowgBarSpacing or emptyBarSpacing
     local topSpace, bottomSpace, rightSpace = spacing.Top or 0, spacing.Bottom or 0, math.max(4,spacing.Right or 0)
     record.PhowgAppliedBarSpacing = spacing
     utility.funcs.render(player,record)
     local draws = record.Drawings
+    if record.DrawOrigin ~= position then
+        record.DrawOrigin = position
+        record.DrawFrame.Position = UDim2.fromOffset(position.X,position.Y)
+    end
     record.DrawingVisible = true
     record.LayoutPosition, record.LayoutSize, record.Rendering = position, size, true
     local health, maxHealth = humanoid.Health, humanoid.MaxHealth
@@ -624,7 +657,7 @@ function utility.funcs.update(player, record, delta, frame)
     local tracerEnabled, outlineEnabled = settings.Tracer.Enabled, settings.Tracer.Enabled and settings.Tracer.Outline
     draws.Tracer.Visible, draws.TracerOutline.Visible = tracerEnabled, outlineEnabled
     if tracerEnabled then
-        local from, to = record.TracerOrigin or frame.TracerOrigin, position + Vector2.new(size.X/2,size.Y/2)
+        local from, to = frame.TracerOrigin, position + Vector2.new(size.X/2,size.Y/2)
         draws.Tracer.Color, draws.Tracer.Thickness = color or settings.Tracer.Color, 1
         draws.Tracer:SetEndpoints(from,to)
         if outlineEnabled then draws.TracerOutline.Color, draws.TracerOutline.Thickness = black, 3; draws.TracerOutline:SetEndpoints(from,to) end
@@ -643,53 +676,18 @@ function ESP:Configure(config)
     for _, key in ipairs({'Box','Name','Crew','Distance','Chams','Highlight','ToolText','WeaponIcon','HealthText','Wanted','ForceField','Tracer','Image'}) do if self.Settings[key].Enabled then enabled = true; break end end
     enabled = enabled or self.Settings.Bars.Health.Enabled or self.Settings.Bars.Armor.Enabled
     revision = revision + 1
-    if not enabled then for player, record in pairs(cache) do utility.funcs.clear_esp(player,record) end end
+    for _, record in pairs(cache) do subscribe(record) end
 end
 function ESP:Refresh() revision = revision + 1 end
 function ESP:Update_ESP_Color() self:Refresh() end
 function ESP:FadeAll() for _, record in pairs(cache) do record.Opacity = 0 end end
-function ESP:HidePreview(key) utility.funcs.clear_esp(nil,self.Previews[key]) end
-function ESP:DestroyPreview(key)
-    local record = self.Previews[key]
-    if record then destroy(record); self.Previews[key] = nil end
-end
-function ESP:RenderPreview(key, player, character, viewCamera, position, size)
-    local source = player.Character or character
-    local humanoid = source and source:FindFirstChildOfClass('Humanoid')
-    if not character or not humanoid or size.X < 10 or size.Y < 10 then self:HidePreview(key); return end
-    local record = self.Previews[key]
-    if record and record.Character ~= character then self:DestroyPreview(key); record = nil end
-    if not record then
-        record = {Player = player, Preview = true, Connections = {}}
-        self.Previews[key] = record
-        bind(record,character)
-    end
-    record.SourceCharacter, record.Humanoid, record.ArmorValue = source, humanoid, getArmor(source)
-    record.EquippedTool = source:FindFirstChildOfClass('Tool')
-    local projection = record.PreviewCamera
-    if not projection then
-        projection = {}
-        function projection:WorldToViewportPoint(world)
-            local point = self.Camera.CFrame:PointToObjectSpace(world)
-            local depth = -point.Z
-            if depth <= 0.01 then return Vector3.new(0,0,depth),false end
-            local focal = self.Size.Y / (2 * math.tan(math.rad(self.Camera.FieldOfView)/2))
-            local x, y = self.Position.X+self.Size.X/2+point.X*focal/depth, self.Position.Y+self.Size.Y/2-point.Y*focal/depth
-            return Vector3.new(x,y,depth), x>=self.Position.X and x<=self.Position.X+self.Size.X and y>=self.Position.Y and y<=self.Position.Y+self.Size.Y
-        end
-        record.PreviewCamera = projection
-    end
-    projection.Camera, projection.Position, projection.Size, projection.CFrame, projection.ViewportSize = viewCamera, position, size, viewCamera.CFrame, size
-    record.TracerOrigin, record.PreviewDistance = position + Vector2.new(size.X/2,size.Y), 0
-    utility.funcs.update(player,record,1/60)
-end
 for _, player in ipairs(Players:GetPlayers()) do track(player) end
 connect(Players.PlayerAdded,track,Players,'unnamed player added')
 connect(Players.PlayerRemoving,function(player)
     if cache[player] then destroy(cache[player]); cache[player] = nil end
     ESP.CrewNames[player], ESP.CrewIds[player] = nil, nil
 end,Players,'unnamed player removed')
-connect(RunService.Heartbeat,function(delta)
+connect(RunService.RenderStepped,function(delta)
     if not alive or not enabled then return end
     local frame = frameContext(delta)
     for player, record in pairs(cache) do
@@ -705,7 +703,6 @@ ESP._Cleanup = function()
     alive = false
     for _, connection in ipairs(connections) do connection:Disconnect() end
     for _, record in pairs(cache) do destroy(record) end
-    for key in pairs(ESP.Previews) do ESP:DestroyPreview(key) end
     table.clear(cache)
     gui:Destroy()
 end
