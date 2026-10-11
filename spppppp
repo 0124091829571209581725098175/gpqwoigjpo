@@ -1,8 +1,9 @@
 local previous = getgenv().ESP
 if type(previous) == 'table' and type(previous._Cleanup) == 'function' then pcall(previous._Cleanup) end
-local ESP: {[string]: any} = {Backend = 'Unnamed', StartupRevision = 4, PhowgBarHookRevision = 1, SupportsSpatialBarGradient = true, NativeBarGradients = true, CrewNames = {}, CrewIds = {}, CrewIcons = {}, CrewCounts = {}}
+local ESP: {[string]: any} = {Backend = 'Unnamed', StartupRevision = 5, PhowgBarHookRevision = 1, SupportsSpatialBarGradient = true, NativeBarGradients = true, CrewNames = {}, CrewIds = {}, CrewIcons = {}, CrewCounts = {}}
 ESP.PhowgBarHookRevision = 1
 ESP.NativeLabelSpacing = true
+ESP.SupportsPlayerStats = true
 getgenv().ESP = ESP
 local Players, RunService, CoreGui, UserInputService = game:GetService('Players'), game:GetService('RunService'), game:GetService('CoreGui'), game:GetService('UserInputService')
 local LocalPlayer, Workspace = Players.LocalPlayer, workspace
@@ -24,6 +25,9 @@ if gethui then local ok, hidden = pcall(gethui); if ok and typeof(hidden) == 'In
 gui.Parent = parent
 local alive, enabled, revision = true, false, 0
 ESP.Settings = {
+    DetectCheaters = {Enabled = false, RedName = true},
+    Accuracy = {Enabled = false, Mode = 'all time', Color = Color3.new(1,1,1)},
+    Country = {Enabled = false, Color = Color3.new(1,1,1)},
     Target = {Enabled = false, Color = Color3.fromRGB(255,90,90)},
     Box = {
         Enabled = false,
@@ -295,7 +299,7 @@ function utility.funcs.render(player, record)
     record.Chams, record.ChamStates = record.Chams or {}, record.ChamStates or {}
     local draws = record.Drawings
     for _, name in ipairs({'Box','BoxOutline','BoxInline'}) do draws[name] = draw('Square'); draws[name].ZIndex = 3 end
-    for _, name in ipairs({'Name','Distance','ToolText','HealthText','WantedText','ForceFieldText','CrewText','CrewCount'}) do draws[name] = draw('Text'); draws[name].ZIndex = 5; draws[name].Center = name == 'Name' or name == 'Distance' or name == 'ToolText' or name == 'CrewText' end
+    for _, name in ipairs({'Name','Distance','ToolText','HealthText','WantedText','ForceFieldText','CrewText','CrewCount','AccuracyText','CountryText'}) do draws[name] = draw('Text'); draws[name].ZIndex = 5; draws[name].Center = name == 'Name' or name == 'Distance' or name == 'ToolText' or name == 'CrewText' or name == 'AccuracyText' or name == 'CountryText' end
     for _, kind in ipairs(barKinds) do
         draws[kind .. 'BarOutline'], draws[kind .. 'Bar'] = draw('Bar'), draw('Bar')
         draws[kind .. 'BarOutline'].ZIndex, draws[kind .. 'Bar'].ZIndex = 3, 4
@@ -326,7 +330,106 @@ function utility.funcs.clear_esp(player, record)
     if record.Highlight then record.Highlight.Enabled = false; if record.HighlightState then record.HighlightState.Enabled = false end end
     if record.ForceFieldBubble then record.ForceFieldBubble.Visible = false; if record.ForceFieldState then record.ForceFieldState.Visible = false end end
 end
+local statKeys = {'LockFlagged','AimLandAllTime','AimShotsAllTime','Country'}
+local function numeric(value)
+    value = tonumber(value)
+    return value and value == value and value >= 0 and value < math.huge and value or nil
+end
+local function stopStats(record)
+    record.StatsGeneration = (record.StatsGeneration or 0) + 1
+    record.StatsPending = false
+    for _, connection in ipairs(record.StatsConnections or {}) do connection:Disconnect() end
+    record.StatsConnections = {}
+end
+local function refreshStats(record, changedKey)
+    local values = record.StatValues or {}
+    record.StatValues = values
+    for key, sources in pairs(record.StatSources or {}) do
+        if changedKey and changedKey ~= key then continue end
+        values[key] = nil
+        for _, source in ipairs(sources) do
+            local value
+            if source.Attribute then value = source.Object:GetAttribute(key) else value = source.Object.Value end
+            if value ~= nil then values[key] = value; break end
+        end
+    end
+    if not changedKey or changedKey == 'LockFlagged' then record.LockFlagged = numeric(values.LockFlagged) or 0 end
+    if not changedKey or changedKey:sub(1,3) == 'Aim' then
+        local hits, shots = numeric(values.AimLandAllTime), numeric(values.AimShotsAllTime)
+        if hits and shots then
+            if not record.AimBaseline or shots < record.AimBaseline.Shots or hits < record.AimBaseline.Hits then
+                record.AimBaseline = {Hits = hits, Shots = shots}
+            end
+            record.AccuracyAllTime = shots > 0 and string.format('accuracy: %.1f%%', clamp(hits / shots * 100,0,100)) or 'accuracy: N/A'
+            local sessionShots, sessionHits = shots - record.AimBaseline.Shots, hits - record.AimBaseline.Hits
+            record.AccuracySession = sessionShots > 0 and string.format('accuracy: %.1f%%', clamp(sessionHits / sessionShots * 100,0,100)) or 'accuracy: N/A'
+        else
+            record.AccuracyAllTime, record.AccuracySession = 'accuracy: N/A', 'accuracy: N/A'
+        end
+    end
+    if not changedKey or changedKey == 'Country' then
+        local country = type(values.Country) == 'string' and values.Country:upper():match('^%s*([A-Z][A-Z])%s*$') or nil
+        record.CountryText = 'country: ' .. (country or 'N/A')
+    end
+end
+local function bindStats(record, mask, seed)
+    stopStats(record)
+    record.StatsMask = mask
+    record.StatSources, record.StatValues = {}, {}
+    if mask == '' and not seed then return end
+    local player = record.Player
+    local nodes = {player}
+    for _, child in ipairs(player:GetDescendants()) do nodes[#nodes + 1] = child end
+    local generation = record.StatsGeneration
+    local function rebuild()
+        if record.StatsPending then return end
+        record.StatsPending = true
+        task.defer(function()
+            if not alive or record.StatsGeneration ~= generation or cache[player] ~= record then return end
+            record.StatsPending = false
+            bindStats(record, record.StatsMask)
+        end)
+    end
+    for _, key in ipairs(statKeys) do
+        local needed = key == 'LockFlagged' and mask:find('detect',1,true) or key == 'Country' and mask:find('country',1,true) or key:sub(1,3) == 'Aim' and (seed or mask:find('accuracy',1,true))
+        if needed then
+            local sources = {}
+            record.StatSources[key] = sources
+            if key == 'LockFlagged' then
+                local folder = player:FindFirstChild('DataFolder')
+                local value = folder and folder:FindFirstChild(key)
+                if value and value:IsA('ValueBase') then sources[#sources + 1] = {Object = value} end
+            end
+            for _, node in ipairs(nodes) do
+                local attribute = node:GetAttribute(key)
+                local candidate = node == player or node.Name == 'DataFolder' or node.Name == 'PlayerSettings' or node.Name == 'Settings' or node.Name == 'Information' or attribute ~= nil
+                if candidate then
+                    sources[#sources + 1] = {Object = node, Attribute = true}
+                    if not seed then record.StatsConnections[#record.StatsConnections + 1] = connect(node:GetAttributeChangedSignal(key),function() refreshStats(record,key) end,player,'esp stats attribute',true) end
+                end
+                if node.Name == key and node:IsA('ValueBase') and not (sources[1] and sources[1].Object == node) then sources[#sources + 1] = {Object = node} end
+            end
+            if not seed then
+                for _, source in ipairs(sources) do
+                    if not source.Attribute then record.StatsConnections[#record.StatsConnections + 1] = connect(source.Object:GetPropertyChangedSignal('Value'),function() refreshStats(record,key) end,player,'esp stats value',true) end
+                end
+            end
+        end
+    end
+    refreshStats(record)
+    if not seed then
+        record.StatsConnections[#record.StatsConnections + 1] = connect(player.DescendantAdded,rebuild,player,'esp stats added',true)
+        record.StatsConnections[#record.StatsConnections + 1] = connect(player.DescendantRemoving,rebuild,player,'esp stats removed',true)
+    end
+end
+local function subscribeStats(record)
+    local settings = ESP.Settings
+    local eligible = record.Player ~= LocalPlayer or settings.Self.Enabled
+    local mask = eligible and ((settings.DetectCheaters.Enabled and 'detect' or '') .. (settings.Accuracy.Enabled and 'accuracy' or '') .. (settings.Country.Enabled and 'country' or '')) or ''
+    if record.StatsMask ~= mask then bindStats(record, mask) end
+end
 local function destroy(record)
+    stopStats(record)
     for _, connection in ipairs(record.Connections or {}) do connection:Disconnect() end
     for _, connection in ipairs(record.CharacterConnections or {}) do connection:Disconnect() end
     for _, object in pairs(record.Drawings or {}) do object:Remove() end
@@ -352,7 +455,10 @@ local function track(player)
     if cache[player] then return end
     local record = {Player = player, Connections = {}, Parts = {}}
     cache[player] = record
+    bindStats(record, '', true)
+    record.StatsMask = nil
     subscribe(record)
+    subscribeStats(record)
 end
 function ESP:HasForceField(character)
     if not character then return false end
@@ -553,7 +659,7 @@ local function frameContext(delta)
         elseif selected == 'Below' then origin = Vector2.new(viewport.X/2,viewport.Y)
         else origin = Vector2.new(viewport.X/2,0) end
     end
-    return {Camera = camera, ClientPosition = clientPosition, TracerOrigin = origin, Wanted = environment.PhowgGetWanted, Now = tick(), Delta = delta or 1/60, SmoothAlpha = 1-exp(-(delta or 1/60)*3), TwoDimensional = settings.Box.Enabled or settings.Name.Enabled or settings.Crew.Enabled or settings.Distance.Enabled or settings.ToolText.Enabled or settings.WeaponIcon.Enabled or settings.HealthText.Enabled or settings.Wanted.Enabled or settings.ForceField.Enabled or settings.Tracer.Enabled or settings.Image.Enabled or settings.Bars.Health.Enabled or settings.Bars.Armor.Enabled}
+    return {Camera = camera, ClientPosition = clientPosition, TracerOrigin = origin, Wanted = environment.PhowgGetWanted, Now = tick(), Delta = delta or 1/60, SmoothAlpha = 1-exp(-(delta or 1/60)*3), TwoDimensional = settings.DetectCheaters.Enabled or settings.Accuracy.Enabled or settings.Country.Enabled or settings.Box.Enabled or settings.Name.Enabled or settings.Crew.Enabled or settings.Distance.Enabled or settings.ToolText.Enabled or settings.WeaponIcon.Enabled or settings.HealthText.Enabled or settings.Wanted.Enabled or settings.ForceField.Enabled or settings.Tracer.Enabled or settings.Image.Enabled or settings.Bars.Health.Enabled or settings.Bars.Armor.Enabled}
 end
 function utility.funcs.update(player, record, delta, frame)
     record = record or cache[player]
@@ -624,24 +730,41 @@ function utility.funcs.update(player, record, delta, frame)
         local gradientEnabled = settings.Image.Data == 'Gradient'
         if record.ImageGradientEnabled ~= gradientEnabled then record.ImageGradient.Enabled, record.ImageGradientEnabled = gradientEnabled, gradientEnabled end
     end
-    if settings.Name.Enabled then
+    local flagged = settings.DetectCheaters.Enabled and record.LockFlagged >= 1
+    if settings.Name.Enabled or flagged then
         local both, display, username = settings.Name.Use_Both_Name, settings.Name.Use_Display_Name, player.Name
         if record.NameBoth ~= both or record.NameDisplay ~= display or record.PlayerName ~= username or record.DisplayName ~= player.DisplayName or not record.NameText then
             record.NameBoth, record.NameDisplay, record.PlayerName, record.DisplayName = both, display, username, player.DisplayName
             record.NameText = both and (player.DisplayName .. ' (@' .. username .. ')') or display and player.DisplayName or username
         end
-        label(draws.Name,true,record.NameText,position + Vector2.new(size.X/2,-settings.Misc.MainSize-4-topSpace),color or settings.Name.Color,settings.Misc.MainSize)
+        local tag = flagged and (record.LockFlagged == 1 and ' EXPLOITER (suspected)' or ' EXPLOITER (flagged)') or ''
+        if record.TagBase ~= record.NameText or record.NameTag ~= tag then
+            record.TagBase, record.NameTag, record.TaggedName = record.NameText, tag, record.NameText .. tag
+        end
+        local text = record.TaggedName
+        local nameColor = flagged and settings.DetectCheaters.RedName and Color3.fromRGB(255,55,55) or color or settings.Name.Color
+        label(draws.Name,true,text,position + Vector2.new(size.X/2,-settings.Misc.MainSize-4-topSpace),nameColor,settings.Misc.MainSize)
     else draws.Name.Visible = false end
     local below = size.Y + 4 + bottomSpace
     if settings.Distance.Enabled then
         if record.DistanceValue ~= distance then record.DistanceValue, record.DistanceText = distance, string.format('[%.0fm]',distance * 0.28) end
         label(draws.Distance,true,record.DistanceText,position + Vector2.new(size.X/2,below),color or settings.Distance.Color,settings.Misc.SmallSize)
-        below = below + 14
+        below = below + math.max(14, settings.Misc.SmallSize + 2)
     else draws.Distance.Visible = false end
+    local lineHeight = math.max(14, settings.Misc.SmallSize + 2)
+    if settings.Accuracy.Enabled then
+        local text = settings.Accuracy.Mode == 'this session' and record.AccuracySession or record.AccuracyAllTime
+        label(draws.AccuracyText,true,text or 'accuracy: N/A',position + Vector2.new(size.X/2,below),settings.Accuracy.Color,settings.Misc.SmallSize)
+        below += lineHeight
+    else draws.AccuracyText.Visible = false end
+    if settings.Country.Enabled then
+        label(draws.CountryText,true,record.CountryText or 'country: N/A',position + Vector2.new(size.X/2,below),settings.Country.Color,settings.Misc.SmallSize)
+        below += lineHeight
+    else draws.CountryText.Visible = false end
     local tool = record.EquippedTool
     if settings.ToolText.Enabled then
         label(draws.ToolText,true,tool and tool.Name or 'none',position + Vector2.new(size.X/2,below),color or settings.ToolText.Color,settings.Misc.SmallSize)
-        below = below + 14
+        below = below + math.max(14, settings.Misc.SmallSize + 2)
     else draws.ToolText.Visible = false end
     local weaponVisible = false
     if settings.WeaponIcon.Enabled and tool then
@@ -655,12 +778,14 @@ function utility.funcs.update(player, record, delta, frame)
     draws.WeaponIcon.Visible = weaponVisible
     local crew = ESP.CrewNames[player]
     local crewOn = settings.Crew.Enabled and type(crew) == 'string' and crew ~= ''
-    if crewOn then label(draws.CrewText,true,crew,position + Vector2.new(size.X/2,-32-topSpace),color or settings.Crew.Color,settings.Misc.SmallSize) else draws.CrewText.Visible = false end
+    local crewY = -4-topSpace-settings.Misc.SmallSize
+    if settings.Name.Enabled or flagged then crewY -= settings.Misc.MainSize + 3 end
+    if crewOn then label(draws.CrewText,true,crew,position + Vector2.new(size.X/2,crewY),color or settings.Crew.Color,settings.Misc.SmallSize) else draws.CrewText.Visible = false end
     local crewId = ESP.CrewIds[player]
-    if crewOn and settings.Crew.Count then label(draws.CrewCount,true,'[' .. tostring(ESP.CrewCounts[crewId] or 0) .. ']',position + Vector2.new(size.X+4,-32-topSpace),color or settings.Crew.Color,settings.Misc.SmallSize) else draws.CrewCount.Visible = false end
+    if crewOn and settings.Crew.Count then label(draws.CrewCount,true,'[' .. tostring(ESP.CrewCounts[crewId] or 0) .. ']',position + Vector2.new(size.X+4,crewY),color or settings.Crew.Color,settings.Misc.SmallSize) else draws.CrewCount.Visible = false end
     local icon = crewId and ESP.CrewIcons[crewId]
     local crewIconVisible = crewOn and type(icon) == 'string' and icon ~= ''
-    if crewIconVisible then draws.CrewIcon.Data, draws.CrewIcon.Position, draws.CrewIcon.Size = icon, position + Vector2.new(-18,-32-topSpace), Vector2.new(14,14) end
+    if crewIconVisible then draws.CrewIcon.Data, draws.CrewIcon.Position, draws.CrewIcon.Size = icon, position + Vector2.new(-18,crewY), Vector2.new(14,14) end
     draws.CrewIcon.Visible = crewIconVisible == true
     for index, kind in ipairs(barKinds) do
         local barSettings, value = settings.Bars[kind], kind == 'Health' and record.Fake_Health or record.Fake_Armor
@@ -703,10 +828,10 @@ function ESP:Configure(config)
     end
     merge(self.Settings,config)
     enabled = false
-    for _, key in ipairs({'Box','Name','Crew','Distance','Chams','Highlight','ToolText','WeaponIcon','HealthText','Wanted','ForceField','Tracer','Image'}) do if self.Settings[key].Enabled then enabled = true; break end end
+    for _, key in ipairs({'Box','Name','Crew','Distance','Chams','Highlight','ToolText','WeaponIcon','HealthText','Wanted','ForceField','Tracer','Image','DetectCheaters','Accuracy','Country'}) do if self.Settings[key].Enabled then enabled = true; break end end
     enabled = enabled or self.Settings.Bars.Health.Enabled or self.Settings.Bars.Armor.Enabled
     revision = revision + 1
-    for _, record in pairs(cache) do subscribe(record) end
+    for _, record in pairs(cache) do subscribe(record); subscribeStats(record) end
 end
 function ESP:Refresh() revision = revision + 1 end
 function ESP:Update_ESP_Color() self:Refresh() end
