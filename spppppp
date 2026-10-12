@@ -1,20 +1,23 @@
 local previous = getgenv().ESP
 if type(previous) == 'table' and type(previous._Cleanup) == 'function' then pcall(previous._Cleanup) end
-local ESP: {[string]: any} = {Backend = 'Unnamed', StartupRevision = 8, PhowgBarHookRevision = 1, SupportsSpatialBarGradient = true, NativeBarGradients = true, CrewNames = {}, CrewIds = {}, CrewIcons = {}, CrewCounts = {}}
+local ESP: {[string]: any} = {Backend = 'Unnamed', StartupRevision = 9, PhowgBarHookRevision = 1, SupportsSpatialBarGradient = true, NativeBarGradients = true, CrewNames = {}, CrewIds = {}, CrewIcons = {}, CrewCounts = {}}
 ESP.PhowgBarHookRevision = 1
 ESP.NativeLabelSpacing = true
 ESP.SupportsPlayerStats = true
 ESP.SupportsCountryNames = true
 ESP.SupportsCountryIPv4 = true
 ESP.LazyDrawings = true
+ESP.SupportsPerformanceMetrics = true
+ESP.SupportsDistanceDetail = true
 getgenv().ESP = ESP
 local Players, RunService, CoreGui, UserInputService = game:GetService('Players'), game:GetService('RunService'), game:GetService('CoreGui'), game:GetService('UserInputService')
 local LocalPlayer, Workspace = Players.LocalPlayer, workspace
 local SharedConnect = getgenv().PhowgSharedConnect
 ESP.SharedConnectProvider = SharedConnect
 local utility, connections, cache = {funcs = {}}, {}, {}
-local floor, clamp, exp, atan2 = math.floor, math.clamp, math.exp, math.atan2
+local floor, clamp, exp, atan2, clock = math.floor, math.clamp, math.exp, math.atan2, os.clock
 local white, black = Color3.new(1,1,1), Color3.new(0,0,0)
+local cheaterRed = Color3.fromRGB(255,55,55)
 local one2D, two2D = Vector2.new(1,1), Vector2.new(2,2)
 local lowerOffset, upperOffset = Vector3.new(0,1,0), Vector3.new(0,3,0)
 local defaultHealthTextOffset = Vector2.new(-28,0)
@@ -28,6 +31,8 @@ if gethui then local ok, hidden = pcall(gethui); if ok and typeof(hidden) == 'In
 gui.Parent = parent
 local alive, enabled, revision = true, false, 0
 ESP.Settings = {
+    Performance = {Profile = false},
+    DistanceDetail = {Enabled = false, Distance = 300, HideEffects = true, HideSecondary = true},
     DetectCheaters = {Enabled = false, RedName = true},
     Accuracy = {Enabled = false, Mode = 'all time', Color = Color3.new(1,1,1)},
     Country = {Enabled = false, Color = Color3.new(1,1,1), SimulatedIP = false},
@@ -165,6 +170,17 @@ ESP.Settings = {
         SmallSize = (identifyexecutor and identifyexecutor() == "Wave") and 13 or 11,
     }
 }
+local timingKeys = {'ProjectionMs','LabelsIconsMs','EffectsMs','OtherMs','TotalMs'}
+ESP.Performance = {Enabled = false, Frames = 0, Visible = 0, Tracked = 0, Last = {}, Average = {}, Peak = {}}
+function ESP:ResetPerformance()
+    local metrics = self.Performance
+    metrics.Frames, metrics.Visible, metrics.Tracked = 0, 0, 0
+    for _, key in ipairs(timingKeys) do metrics.Last[key], metrics.Average[key], metrics.Peak[key] = 0, 0, 0 end
+end
+ESP:ResetPerformance()
+local function profileStage(frame, key, started)
+    if started then frame[key] += clock() - started end
+end
 local function connect(signal, fn, owner, label, recordOwned)
     local connection = SharedConnect and SharedConnect(signal,fn,owner,label) or signal:Connect(fn)
     if not recordOwned then connections[#connections + 1] = connection end
@@ -302,13 +318,24 @@ local function bind(record, character)
     if record.Highlight then record.Highlight:Destroy(); record.Highlight = nil end
     if record.ForceFieldBubble then record.ForceFieldBubble:Destroy(); record.ForceFieldBubble = nil end
     record.HighlightState, record.ForceFieldState = nil, nil
+    if record.ToolNameConnection then record.ToolNameConnection:Disconnect(); record.ToolNameConnection = nil end
+    record.EquippedTool, record.ToolName, record.IconToolName, record.IconKey = nil, 'none', nil, nil
     record.Character, record.Parts, record.LastHealth, record.LastArmor = character, {}, nil, nil
     local function refresh()
         record.Root = character and character:FindFirstChild('HumanoidRootPart')
         record.Anchor = character and (character:FindFirstChild('UpperTorso') or character:FindFirstChild('Torso') or record.Root)
         record.Humanoid = character and character:FindFirstChildOfClass('Humanoid')
         record.ArmorValue = getArmor(character)
-        record.EquippedTool = character and character:FindFirstChildOfClass('Tool')
+        local tool = character and character:FindFirstChildOfClass('Tool')
+        if record.EquippedTool ~= tool then
+            if record.ToolNameConnection then record.ToolNameConnection:Disconnect(); record.ToolNameConnection = nil end
+            record.EquippedTool, record.ToolName, record.IconToolName, record.IconKey, record.IconData = tool, tool and tool.Name or 'none', nil, nil, nil
+            if tool and (ESP.Settings.ToolText.Enabled or ESP.Settings.WeaponIcon.Enabled) then
+                record.ToolNameConnection = connect(tool:GetPropertyChangedSignal('Name'),function()
+                    record.ToolName, record.IconToolName, record.IconKey = tool.Name, nil, nil
+                end,record.Player,'esp tool name',true)
+            end
+        end
         record.ForceFieldInstance = character and character:FindFirstChildOfClass('ForceField')
         record.ForceFieldValue = character and (character:FindFirstChild('Forcefield') or character:FindFirstChild('ForceField'))
     end
@@ -962,8 +989,10 @@ local function subscribeStats(record)
 end
 local function destroy(record)
     stopStats(record)
+    for _, connection in ipairs(record.IdentityConnections or {}) do connection:Disconnect() end
     for _, connection in ipairs(record.Connections or {}) do connection:Disconnect() end
     for _, connection in ipairs(record.CharacterConnections or {}) do connection:Disconnect() end
+    if record.ToolNameConnection then record.ToolNameConnection:Disconnect(); record.ToolNameConnection = nil end
     for _, object in pairs(record.Drawings or {}) do object:Remove() end
     for _, object in pairs(record.Chams or {}) do object:Destroy() end
     if record.DrawFrame then record.DrawFrame:Destroy() end
@@ -981,16 +1010,38 @@ local function subscribe(record)
     bind(record, wanted and player.Character or nil)
     if wanted then
         record.Connections[1] = connect(player.CharacterAdded,function(character) utility.funcs.clear_esp(player,record); bind(record,character) end,player,'unnamed respawn',true)
+        if player.CharacterRemoving then
+            record.Connections[#record.Connections + 1] = connect(player.CharacterRemoving,function(character)
+                if record.Character == character then utility.funcs.clear_esp(player,record); bind(record,nil) end
+            end,player,'esp character removing',true)
+        end
+    end
+end
+local function subscribeIdentity(record)
+    local player = record.Player
+    local wanted = enabled and (player ~= LocalPlayer or ESP.Settings.Self.Enabled) and (ESP.Settings.Name.Enabled or ESP.Settings.DetectCheaters.Enabled)
+    if record.IdentitySubscribed == wanted then return end
+    record.IdentitySubscribed = wanted
+    for _, connection in ipairs(record.IdentityConnections or {}) do connection:Disconnect() end
+    record.IdentityConnections = {}
+    record.PlayerName, record.DisplayName, record.NameText = player.Name, player.DisplayName, nil
+    if wanted then
+        local function refresh()
+            record.PlayerName, record.DisplayName, record.NameText = player.Name, player.DisplayName, nil
+        end
+        record.IdentityConnections[1] = connect(player:GetPropertyChangedSignal('Name'),refresh,player,'esp player name',true)
+        record.IdentityConnections[2] = connect(player:GetPropertyChangedSignal('DisplayName'),refresh,player,'esp display name',true)
     end
 end
 local function track(player)
     if cache[player] then return end
-    local record = {Player = player, Connections = {}, Parts = {}}
+    local record: {[string]: any} = {Player = player, Connections = {}, Parts = {}}
     cache[player] = record
     bindStats(record, '', true)
     record.StatsMask = nil
     subscribe(record)
     subscribeStats(record)
+    subscribeIdentity(record)
 end
 function ESP:HasForceField(character)
     if not character then return false end
@@ -1022,9 +1073,9 @@ function ESP:SetBarGradient(record, kind, first, last, horizontal, inverted, shi
     if previous.Rotation ~= rotation then gradient.Rotation, previous.Rotation = rotation, rotation end
     if previous.Enabled ~= active then gradient.Enabled, previous.Enabled = active, active end
 end
-local function effects(player, record, protected, color)
+local function effects(player, record, protected, color, limited)
     local settings, root = ESP.Settings, record.Root
-    if settings.Chams.Enabled then
+    if settings.Chams.Enabled and not limited then
         record.ChamsVisible = true
         for part in pairs(record.Parts) do
             if part.Parent and part.Name ~= 'HumanoidRootPart' then
@@ -1050,7 +1101,7 @@ local function effects(player, record, protected, color)
         end
         record.ChamsVisible = false
     end
-    if settings.Highlight.Enabled then
+    if settings.Highlight.Enabled and not limited then
         if not record.Highlight then
             record.Highlight = Instance.new('Highlight')
             record.Highlight.Adornee, record.Highlight.Parent = record.Character, record.Character
@@ -1065,7 +1116,7 @@ local function effects(player, record, protected, color)
         if state.FillTransparency ~= settings.Highlight.FillTransparency then highlight.FillTransparency, state.FillTransparency = settings.Highlight.FillTransparency, settings.Highlight.FillTransparency end
         if state.OutlineTransparency ~= settings.Highlight.OutlineTransparency then highlight.OutlineTransparency, state.OutlineTransparency = settings.Highlight.OutlineTransparency, settings.Highlight.OutlineTransparency end
     elseif record.Highlight and record.HighlightState.Enabled then record.Highlight.Enabled, record.HighlightState.Enabled = false, false end
-    if protected and settings.ForceField.Enabled then
+    if protected and settings.ForceField.Enabled and not limited then
         if not record.ForceFieldBubble then
             record.ForceFieldBubble = Instance.new('SphereHandleAdornment')
             record.ForceFieldBubble.Radius, record.ForceFieldBubble.AlwaysOnTop, record.ForceFieldBubble.ZIndex, record.ForceFieldBubble.Parent = 4, true, 1, record.Character
@@ -1078,9 +1129,18 @@ local function effects(player, record, protected, color)
         if not state.Visible then bubble.Visible, state.Visible = true, true end
     elseif record.ForceFieldBubble and record.ForceFieldState.Visible then record.ForceFieldBubble.Visible, record.ForceFieldState.Visible = false, false end
 end
+local labelStates = setmetatable({}, {__mode = 'k'})
 local function label(draw, shown, text, position, color, size)
-    draw.Visible = shown == true
-    if shown then draw.Text, draw.Position, draw.Color, draw.Size = text, position, color, size end
+    local state = labelStates[draw]
+    if not state then state = {}; labelStates[draw] = state end
+    shown = shown == true
+    draw.Visible = shown
+    if shown then
+        draw.Position = position
+        if state.Text ~= text then draw.Text, state.Text = text, text end
+        if state.Color ~= color then draw.Color, state.Color = color, color end
+        if state.Size ~= size then draw.Size, state.Size = size, size end
+    end
 end
 
 local IconsURL = "https://raw.githubusercontent.com/0124091829571209581725098175/23023095823059230523/refs/heads/main/32980507239805723"
@@ -1180,7 +1240,7 @@ function ESP:GetWeaponIconAsset(toolName)
 end
 function ESP:WatchWeaponIcons(callback)
     if IconTable then callback(); return nil end
-    local connection = sharedIcons.ReadyEvent.Event:Connect(callback)
+    local connection = connect(sharedIcons.ReadyEvent.Event,callback,sharedIcons.ReadyEvent,'esp icons ready')
     FetchIcons()
     return connection
 end
@@ -1199,7 +1259,7 @@ local function frameContext(delta)
         elseif selected == 'Below' then origin = Vector2.new(viewport.X/2,viewport.Y)
         else origin = Vector2.new(viewport.X/2,0) end
     end
-    return {Camera = camera, ClientPosition = clientPosition, TracerOrigin = origin, Wanted = environment.PhowgGetWanted, Now = tick(), Delta = delta or 1/60, SmoothAlpha = 1-exp(-(delta or 1/60)*3), TwoDimensional = settings.DetectCheaters.Enabled or settings.Accuracy.Enabled or settings.Country.Enabled or settings.Box.Enabled or settings.Name.Enabled or settings.Crew.Enabled or settings.Distance.Enabled or settings.ToolText.Enabled or settings.WeaponIcon.Enabled or settings.HealthText.Enabled or settings.Wanted.Enabled or settings.ForceField.Enabled or settings.Tracer.Enabled or settings.Image.Enabled or settings.Bars.Health.Enabled or settings.Bars.Armor.Enabled}
+    return {Profile = settings.Performance.Profile == true, ProjectionMs = 0, LabelsIconsMs = 0, EffectsMs = 0, Visible = 0, Tracked = 0, Camera = camera, ClientPosition = clientPosition, TracerOrigin = origin, Wanted = environment.PhowgGetWanted, Now = tick(), Delta = delta or 1/60, SmoothAlpha = 1-exp(-(delta or 1/60)*3), TwoDimensional = settings.DetectCheaters.Enabled or settings.Accuracy.Enabled or settings.Country.Enabled or settings.Box.Enabled or settings.Name.Enabled or settings.Crew.Enabled or settings.Distance.Enabled or settings.ToolText.Enabled or settings.WeaponIcon.Enabled or settings.HealthText.Enabled or settings.Wanted.Enabled or settings.ForceField.Enabled or settings.Tracer.Enabled or settings.Image.Enabled or settings.Bars.Health.Enabled or settings.Bars.Armor.Enabled}
 end
 function utility.funcs.update(player, record, delta, frame)
     record = record or cache[player]
@@ -1211,12 +1271,16 @@ function utility.funcs.update(player, record, delta, frame)
     local root, humanoid = record.Root, record.Humanoid
     local camera = frame.Camera
     if not character or not character.Parent or not root or not root.Parent or not humanoid or not camera or humanoid.Health <= 0 then utility.funcs.clear_esp(player,record); return end
+    local projectionStarted = frame.Profile and clock() or nil
     local rootPosition = root.Position
     local hrp2D, onScreen = camera:WorldToViewportPoint(rootPosition)
-    if not onScreen or hrp2D.Z <= 0 then utility.funcs.clear_esp(player,record); return end
+    if not onScreen or hrp2D.Z <= 0 then profileStage(frame,'ProjectionMs',projectionStarted); utility.funcs.clear_esp(player,record); return end
     local distance
-    if settings.Distance.Enabled or settings.DistanceLimit.Enabled then distance = (rootPosition - (frame.ClientPosition or camera.CFrame.Position)).Magnitude end
-    if settings.DistanceLimit.Enabled and distance > settings.DistanceLimit.MaxDistance then utility.funcs.clear_esp(player,record); return end
+    if settings.Distance.Enabled or settings.DistanceLimit.Enabled or settings.DistanceDetail.Enabled then distance = (rootPosition - (frame.ClientPosition or camera.CFrame.Position)).Magnitude end
+    if settings.DistanceLimit.Enabled and distance > settings.DistanceLimit.MaxDistance then profileStage(frame,'ProjectionMs',projectionStarted); utility.funcs.clear_esp(player,record); return end
+    local distant = settings.DistanceDetail.Enabled and distance > settings.DistanceDetail.Distance
+    local hideEffects, hideSecondary = distant and settings.DistanceDetail.HideEffects, distant and settings.DistanceDetail.HideSecondary
+    if frame.Profile then frame.Visible += 1 end
     local color = settings.Target.Enabled and (ESP.ActiveTarget == player) and settings.Target.Color or nil
     local protected = false
     if settings.ForceField.Enabled then
@@ -1229,13 +1293,18 @@ function utility.funcs.update(player, record, delta, frame)
     if not frame.TwoDimensional then
         record.Rendering = true
         if record.DrawingVisible then for _, draw in pairs(record.Drawings) do draw.Visible = false end; record.DrawingVisible = false end
-        effects(player,record,protected,color)
+        profileStage(frame,'ProjectionMs',projectionStarted)
+        local effectsStarted = frame.Profile and clock() or nil
+        effects(player,record,protected,color,hideEffects)
+        profileStage(frame,'EffectsMs',effectsStarted)
         return
     end
     local charSize = (camera:WorldToViewportPoint(rootPosition - lowerOffset).Y - camera:WorldToViewportPoint(rootPosition + upperOffset).Y) / 2
-    if charSize <= 0 or charSize ~= charSize then utility.funcs.clear_esp(player,record); return end
+    if charSize <= 0 or charSize ~= charSize then profileStage(frame,'ProjectionMs',projectionStarted); utility.funcs.clear_esp(player,record); return end
     local size = Vector2.new(charSize * 1.5,charSize * 3.2)
     local position = Vector2.new(hrp2D.X - charSize * 1.5 / 2,hrp2D.Y - charSize * 3 / 2)
+    profileStage(frame,'ProjectionMs',projectionStarted)
+    local effectsStarted = frame.Profile and clock() or nil
     local spacing = record.PhowgBarSpacing or emptyBarSpacing
     local topSpace, bottomSpace, rightSpace = spacing.Top or 0, spacing.Bottom or 0, math.max(4,spacing.Right or 0)
     record.PhowgAppliedBarSpacing = spacing
@@ -1264,8 +1333,8 @@ function utility.funcs.update(player, record, delta, frame)
         draws.BoxOutline.Position, draws.BoxOutline.Size = position - one2D, size + two2D
         draws.BoxInline.Position, draws.BoxInline.Size = position + one2D, size - two2D
     end
-    draws.Image.Visible = settings.Image.Enabled
-    if settings.Image.Enabled then
+    draws.Image.Visible = settings.Image.Enabled and not hideEffects
+    if settings.Image.Enabled and not hideEffects then
         if not record.ImageGradient then
             record.ImageGradient = Instance.new('UIGradient')
             record.ImageGradient.Rotation, record.ImageGradient.Parent = 90, draws.Image.Object
@@ -1275,46 +1344,55 @@ function utility.funcs.update(player, record, delta, frame)
         local gradientEnabled = settings.Image.Data == 'Gradient'
         if record.ImageGradientEnabled ~= gradientEnabled then record.ImageGradient.Enabled, record.ImageGradientEnabled = gradientEnabled, gradientEnabled end
     end
+    profileStage(frame,'EffectsMs',effectsStarted)
+    local labelsStarted = frame.Profile and clock() or nil
     local flagged = settings.DetectCheaters.Enabled and record.LockFlagged >= 1
     if settings.Name.Enabled or flagged then
-        local both, display, username = settings.Name.Use_Both_Name, settings.Name.Use_Display_Name, player.Name
-        if record.NameBoth ~= both or record.NameDisplay ~= display or record.PlayerName ~= username or record.DisplayName ~= player.DisplayName or not record.NameText then
-            record.NameBoth, record.NameDisplay, record.PlayerName, record.DisplayName = both, display, username, player.DisplayName
-            record.NameText = both and (player.DisplayName .. ' (@' .. username .. ')') or display and player.DisplayName or username
+        local both, display, username = settings.Name.Use_Both_Name, settings.Name.Use_Display_Name, record.PlayerName
+        if record.NameBoth ~= both or record.NameDisplay ~= display or not record.NameText then
+            record.NameBoth, record.NameDisplay = both, display
+            record.NameText = both and (record.DisplayName .. ' (@' .. username .. ')') or display and record.DisplayName or username
         end
         local tag = flagged and (record.LockFlagged == 1 and ' EXPLOITER (not sure)' or record.LockFlagged == 2 and ' EXPLOITER (suspected)' or ' EXPLOITER (flagged)') or ''
         if record.TagBase ~= record.NameText or record.NameTag ~= tag then
             record.TagBase, record.NameTag, record.TaggedName = record.NameText, tag, record.NameText .. tag
         end
         local text = record.TaggedName
-        local nameColor = flagged and settings.DetectCheaters.RedName and Color3.fromRGB(255,55,55) or color or settings.Name.Color
+        local nameColor = flagged and settings.DetectCheaters.RedName and cheaterRed or color or settings.Name.Color
         label(draws.Name,true,text,position + Vector2.new(size.X/2,-settings.Misc.MainSize-4-topSpace),nameColor,settings.Misc.MainSize)
     else draws.Name.Visible = false end
     local below = size.Y + 4 + bottomSpace
-    if settings.Distance.Enabled then
-        if record.DistanceValue ~= distance then record.DistanceValue, record.DistanceText = distance, string.format('[%.0fm]',distance * 0.28) end
+    if settings.Distance.Enabled and not hideSecondary then
+        local rawMeters = distance * 0.28
+        local meters = floor(rawMeters + 0.5)
+        if rawMeters % 1 == 0.5 and meters % 2 == 1 then meters -= 1 end
+        if record.DistanceValue ~= meters then record.DistanceValue, record.DistanceText = meters, string.format('[%.0fm]',rawMeters) end
         label(draws.Distance,true,record.DistanceText,position + Vector2.new(size.X/2,below),color or settings.Distance.Color,settings.Misc.SmallSize)
         below = below + math.max(14, settings.Misc.SmallSize + 2)
     else draws.Distance.Visible = false end
     local lineHeight = math.max(14, settings.Misc.SmallSize + 2)
-    if settings.Accuracy.Enabled then
+    if settings.Accuracy.Enabled and not hideSecondary then
         local text = settings.Accuracy.Mode == 'this session' and record.AccuracySession or record.AccuracyAllTime
         label(draws.AccuracyText,true,text or 'accuracy: N/A',position + Vector2.new(size.X/2,below),settings.Accuracy.Color,settings.Misc.SmallSize)
         below += lineHeight
     else draws.AccuracyText.Visible = false end
-    if settings.Country.Enabled then
+    if settings.Country.Enabled and not hideSecondary then
         label(draws.CountryText,true,(settings.Country.SimulatedIP and record.CountryIPText or record.CountryText) or 'Unknown',position + Vector2.new(size.X/2,below),settings.Country.Color,settings.Misc.SmallSize)
         below += lineHeight
     else draws.CountryText.Visible = false end
     local tool = record.EquippedTool
-    if settings.ToolText.Enabled then
-        label(draws.ToolText,true,tool and tool.Name or 'none',position + Vector2.new(size.X/2,below),color or settings.ToolText.Color,settings.Misc.SmallSize)
+    if settings.ToolText.Enabled and not hideSecondary then
+        label(draws.ToolText,true,record.ToolName,position + Vector2.new(size.X/2,below),color or settings.ToolText.Color,settings.Misc.SmallSize)
         below = below + math.max(14, settings.Misc.SmallSize + 2)
     else draws.ToolText.Visible = false end
     local weaponVisible = false
-    if settings.WeaponIcon.Enabled and tool then
-        if record.IconToolName ~= tool.Name then record.IconToolName, record.IconKey = tool.Name, IconKey(tool.Name) end
-        local image = GetIconData(record.IconKey)
+    if settings.WeaponIcon.Enabled and tool and not hideSecondary then
+        if not IconTable then FetchIcons() end
+        if record.IconToolName ~= record.ToolName or record.IconSourceTable ~= IconTable then
+            record.IconToolName, record.IconKey, record.IconSourceTable = record.ToolName, IconKey(record.ToolName), IconTable
+            record.IconData = GetIconData(record.IconKey)
+        end
+        local image = record.IconData
         if image then
             draws.WeaponIcon.Data, draws.WeaponIcon.Position, draws.WeaponIcon.Size, draws.WeaponIcon.Color = image, position + Vector2.new(size.X/2-20,below), Vector2.new(40,20), color or settings.WeaponIcon.Color
             weaponVisible = true
@@ -1322,16 +1400,21 @@ function utility.funcs.update(player, record, delta, frame)
     end
     draws.WeaponIcon.Visible = weaponVisible
     local crew = ESP.CrewNames[player]
-    local crewOn = settings.Crew.Enabled and type(crew) == 'string' and crew ~= ''
+    local crewOn = settings.Crew.Enabled and not hideSecondary and type(crew) == 'string' and crew ~= ''
     local crewY = -4-topSpace-settings.Misc.SmallSize
     if settings.Name.Enabled or flagged then crewY -= settings.Misc.MainSize + 3 end
     if crewOn then label(draws.CrewText,true,crew,position + Vector2.new(size.X/2,crewY),color or settings.Crew.Color,settings.Misc.SmallSize) else draws.CrewText.Visible = false end
     local crewId = ESP.CrewIds[player]
-    if crewOn and settings.Crew.Count then label(draws.CrewCount,true,'[' .. tostring(ESP.CrewCounts[crewId] or 0) .. ']',position + Vector2.new(size.X+4,crewY),color or settings.Crew.Color,settings.Misc.SmallSize) else draws.CrewCount.Visible = false end
+    if crewOn and settings.Crew.Count then
+        local count = ESP.CrewCounts[crewId] or 0
+        if record.CrewCountValue ~= count then record.CrewCountValue, record.CrewCountText = count, '[' .. tostring(count) .. ']' end
+        label(draws.CrewCount,true,record.CrewCountText,position + Vector2.new(size.X+4,crewY),color or settings.Crew.Color,settings.Misc.SmallSize) else draws.CrewCount.Visible = false end
     local icon = crewId and ESP.CrewIcons[crewId]
     local crewIconVisible = crewOn and type(icon) == 'string' and icon ~= ''
     if crewIconVisible then draws.CrewIcon.Data, draws.CrewIcon.Position, draws.CrewIcon.Size = icon, position + Vector2.new(-18,crewY), Vector2.new(14,14) end
     draws.CrewIcon.Visible = crewIconVisible == true
+    profileStage(frame,'LabelsIconsMs',labelsStarted)
+    effectsStarted = frame.Profile and clock() or nil
     for index, kind in ipairs(barKinds) do
         local barSettings, value = settings.Bars[kind], kind == 'Health' and record.Fake_Health or record.Fake_Armor
         local bar, outline = draws[kind .. 'Bar'], draws[kind .. 'BarOutline']
@@ -1349,12 +1432,21 @@ function utility.funcs.update(player, record, delta, frame)
             ESP:SetBarGradient(record,kind,color or barSettings.BaseColor or barSettings.Colors[1],color or barSettings.GradientColor or barSettings.Colors[2] or bar.Color,false,false,0)
         end
     end
-    if settings.HealthText.Enabled and (not settings.HealthText.HideFullHealth or health < maxHealth) then label(draws.HealthText,true,tostring(floor(health)),position + (spacing.HealthText or defaultHealthTextOffset),color or settings.HealthText.Color,settings.Misc.SmallSize) else draws.HealthText.Visible = false end
+    profileStage(frame,'EffectsMs',effectsStarted)
+    labelsStarted = frame.Profile and clock() or nil
+    local healthValue = floor(health)
+    if record.HealthTextValue ~= healthValue then record.HealthTextValue, record.HealthText = healthValue, tostring(healthValue) end
+    if settings.HealthText.Enabled and (not settings.HealthText.HideFullHealth or health < maxHealth) then label(draws.HealthText,true,record.HealthText,position + (spacing.HealthText or defaultHealthTextOffset),color or settings.HealthText.Color,settings.Misc.SmallSize) else draws.HealthText.Visible = false end
     local wanted = 0
-    if settings.Wanted.Enabled and frame.Wanted then local ok, value = pcall(frame.Wanted,player); if ok then wanted = tonumber(value) or 0 end end
-    if settings.Wanted.Enabled and wanted > 0 then label(draws.WantedText,true,'WANTED / ' .. tostring(floor(wanted)),position + Vector2.new(size.X+rightSpace,0),color or settings.Wanted.Color,settings.Misc.SmallSize) else draws.WantedText.Visible = false end
-    if settings.ForceField.Enabled and protected then label(draws.ForceFieldText,true,'FORCEFIELD',position + Vector2.new(size.X+rightSpace,14),settings.ForceField.Color,settings.Misc.SmallSize) else draws.ForceFieldText.Visible = false end
-    local tracerEnabled, outlineEnabled = settings.Tracer.Enabled, settings.Tracer.Enabled and settings.Tracer.Outline
+    if settings.Wanted.Enabled and not hideSecondary and frame.Wanted then local ok, value = pcall(frame.Wanted,player); if ok then wanted = tonumber(value) or 0 end end
+    local wantedValue = floor(wanted)
+    if record.WantedTextValue ~= wantedValue then record.WantedTextValue, record.WantedText = wantedValue, 'WANTED / ' .. tostring(wantedValue) end
+    if settings.Wanted.Enabled and not hideSecondary and wanted > 0 then label(draws.WantedText,true,record.WantedText,position + Vector2.new(size.X+rightSpace,0),color or settings.Wanted.Color,settings.Misc.SmallSize) else draws.WantedText.Visible = false end
+    if settings.ForceField.Enabled and not hideSecondary and protected then label(draws.ForceFieldText,true,'FORCEFIELD',position + Vector2.new(size.X+rightSpace,14),settings.ForceField.Color,settings.Misc.SmallSize) else draws.ForceFieldText.Visible = false end
+    profileStage(frame,'LabelsIconsMs',labelsStarted)
+    effectsStarted = frame.Profile and clock() or nil
+    local tracerEnabled = settings.Tracer.Enabled and not hideEffects
+    local outlineEnabled = tracerEnabled and settings.Tracer.Outline
     draws.Tracer.Visible, draws.TracerOutline.Visible = tracerEnabled, outlineEnabled
     if tracerEnabled then
         local from, to = frame.TracerOrigin, position + Vector2.new(size.X/2,size.Y/2)
@@ -1362,8 +1454,9 @@ function utility.funcs.update(player, record, delta, frame)
         draws.Tracer:SetEndpoints(from,to)
         if outlineEnabled then draws.TracerOutline.Color, draws.TracerOutline.Thickness = black, 3; draws.TracerOutline:SetEndpoints(from,to) end
     end
-    effects(player,record,protected,color)
+    effects(player,record,protected,color,hideEffects)
     if ESP.PhowgRenderBars then ESP.PhowgRenderBars(ESP,player,record,frame.Now) end
+    profileStage(frame,'EffectsMs',effectsStarted)
 end
 function ESP:Configure(config)
     local function merge(target, source)
@@ -1371,12 +1464,24 @@ function ESP:Configure(config)
             if type(value) == 'table' and type(target[key]) == 'table' then merge(target[key],value) else target[key] = value end
         end
     end
+    local previousProfile = self.Settings.Performance.Profile
     merge(self.Settings,config)
+    self.Settings.DistanceDetail.Distance = math.max(1,tonumber(self.Settings.DistanceDetail.Distance) or 300)
+    self.Performance.Enabled = self.Settings.Performance.Profile == true
+    if previousProfile ~= self.Settings.Performance.Profile then self:ResetPerformance() end
     enabled = false
     for _, key in ipairs({'Box','Name','Crew','Distance','Chams','Highlight','ToolText','WeaponIcon','HealthText','Wanted','ForceField','Tracer','Image','DetectCheaters','Accuracy','Country'}) do if self.Settings[key].Enabled then enabled = true; break end end
     enabled = enabled or self.Settings.Bars.Health.Enabled or self.Settings.Bars.Armor.Enabled
     revision = revision + 1
-    for _, record in pairs(cache) do subscribe(record); subscribeStats(record) end
+    for _, record in pairs(cache) do
+        subscribe(record); subscribeStats(record); subscribeIdentity(record)
+        local tool = record.EquippedTool
+        local needsTool = tool and (self.Settings.ToolText.Enabled or self.Settings.WeaponIcon.Enabled)
+        if needsTool and not record.ToolNameConnection then
+            record.ToolName = tool.Name
+            record.ToolNameConnection = connect(tool:GetPropertyChangedSignal('Name'),function() record.ToolName, record.IconToolName, record.IconKey = tool.Name, nil, nil end,record.Player,'esp tool name',true)
+        elseif not needsTool and record.ToolNameConnection then record.ToolNameConnection:Disconnect(); record.ToolNameConnection = nil end
+    end
 end
 function ESP:Refresh() revision = revision + 1 end
 function ESP:Update_ESP_Color() self:Refresh() end
@@ -1389,14 +1494,52 @@ connect(Players.PlayerRemoving,function(player)
 end,Players,'unnamed player removed')
 local function renderFrame(delta)
     if not alive or not enabled then return end
+    local started = ESP.Settings.Performance.Profile and clock() or nil
     local frame = frameContext(delta)
     for player, record in pairs(cache) do
+        if frame.Profile then frame.Tracked += 1 end
         local ok, err = pcall(utility.funcs.update,player,record,delta,frame)
         if not ok then
             utility.funcs.clear_esp(player,record)
             if tick()-(record.ErrorAt or -math.huge)>5 then record.ErrorAt = tick(); warn('[Phowg] unnamed ESP: ' .. tostring(err)) end
         end
     end
+    if started then
+        local metrics = ESP.Performance
+        metrics.Frames += 1
+        metrics.Visible, metrics.Tracked = frame.Visible, frame.Tracked
+        local total = (clock() - started) * 1000
+        frame.ProjectionMs *= 1000
+        frame.LabelsIconsMs *= 1000
+        frame.EffectsMs *= 1000
+        frame.OtherMs, frame.TotalMs = math.max(0,total - frame.ProjectionMs - frame.LabelsIconsMs - frame.EffectsMs), total
+        for _, key in ipairs(timingKeys) do
+            local value = frame[key]
+            metrics.Last[key] = value
+            metrics.Average[key] += (value - metrics.Average[key]) / metrics.Frames
+            metrics.Peak[key] = math.max(metrics.Peak[key],value)
+        end
+    end
+end
+function ESP:GetDiagnostics()
+    local result = {Alive = alive, Enabled = enabled, Tracked = 0, Subscribed = 0, Connections = 0, GlobalConnections = 0, CharacterConnections = 0, StatsConnections = 0, PlayerConnections = 0, IdentityConnections = 0, ToolConnections = 0, RenderBound = self.RenderBound == true}
+    local function count(list)
+        local total = 0
+        for _, connection in ipairs(list or {}) do if connection.Connected then total += 1 end end
+        return total
+    end
+    result.GlobalConnections = count(connections)
+    for _, record in pairs(cache) do
+        result.Tracked += 1
+        if record.Subscribed then result.Subscribed += 1 end
+        result.CharacterConnections += count(record.CharacterConnections)
+        result.StatsConnections += count(record.StatsConnections)
+        result.PlayerConnections += count(record.Connections)
+        result.IdentityConnections += count(record.IdentityConnections)
+        if record.ToolNameConnection and record.ToolNameConnection.Connected then result.ToolConnections += 1 end
+    end
+    result.Connections = result.GlobalConnections + result.CharacterConnections + result.StatsConnections + result.PlayerConnections + result.IdentityConnections + result.ToolConnections
+    return result
 end
 local environment = getgenv()
 environment.PhowgESPRenderSerial = (environment.PhowgESPRenderSerial or 0) + 1
@@ -1404,9 +1547,11 @@ local renderName = 'PhowgESP:' .. tostring(environment.PhowgESPRenderSerial)
 local renderBound = false
 if RunService.BindToRenderStep then renderBound = pcall(function() RunService:BindToRenderStep(renderName,Enum.RenderPriority.Camera.Value + 1,renderFrame) end) end
 if not renderBound then connect(RunService.RenderStepped,renderFrame,RunService,'unnamed render') end
+ESP.RenderBound, ESP.RenderName = renderBound, renderName
 ESP._Cleanup = function()
     if not alive then return end
-    alive = false
+    alive, enabled = false, false
+    ESP.RenderBound = false
     if renderBound then RunService:UnbindFromRenderStep(renderName); renderBound = false end
     for _, connection in ipairs(connections) do connection:Disconnect() end
     for _, record in pairs(cache) do destroy(record) end
