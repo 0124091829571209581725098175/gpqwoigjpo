@@ -1,11 +1,12 @@
 local previous = getgenv().ESP
 if type(previous) == 'table' and type(previous._Cleanup) == 'function' then pcall(previous._Cleanup) end
-local ESP: {[string]: any} = {Backend = 'Unnamed', StartupRevision = 7, PhowgBarHookRevision = 1, SupportsSpatialBarGradient = true, NativeBarGradients = true, CrewNames = {}, CrewIds = {}, CrewIcons = {}, CrewCounts = {}}
+local ESP: {[string]: any} = {Backend = 'Unnamed', StartupRevision = 8, PhowgBarHookRevision = 1, SupportsSpatialBarGradient = true, NativeBarGradients = true, CrewNames = {}, CrewIds = {}, CrewIcons = {}, CrewCounts = {}}
 ESP.PhowgBarHookRevision = 1
 ESP.NativeLabelSpacing = true
 ESP.SupportsPlayerStats = true
 ESP.SupportsCountryNames = true
 ESP.SupportsCountryIPv4 = true
+ESP.LazyDrawings = true
 getgenv().ESP = ESP
 local Players, RunService, CoreGui, UserInputService = game:GetService('Players'), game:GetService('RunService'), game:GetService('CoreGui'), game:GetService('UserInputService')
 local LocalPlayer, Workspace = Players.LocalPlayer, workspace
@@ -174,7 +175,7 @@ local function widget(class, parent)
     item.BackgroundTransparency, item.BackgroundColor3, item.BorderSizePixel, item.Visible, item.Parent = 1, white, 0, false, parent or gui
     return item
 end
-local function drawing(kind, owner, record)
+local function materializedDrawing(kind, owner, record)
     local native
     if (kind == 'Image') and Drawing and Drawing.new then
         local ok, result = pcall(function() return Drawing.new('Image') end)
@@ -246,6 +247,47 @@ local function drawing(kind, owner, record)
         end
     })
 end
+local function drawing(kind, owner, record)
+    local target, removed
+    local pending = {}
+    local defaults = {Visible = false, Position = Vector2.zero, Size = Vector2.zero, From = Vector2.zero, To = Vector2.zero, Color = white, Transparency = 1, Filled = kind == 'Bar' or kind == 'Line', Thickness = 1, Text = '', Center = false, Kind = kind}
+    local function ensure()
+        if target or removed then return target end
+        target = materializedDrawing(kind,owner,record)
+        for _, key in ipairs({'Center','Filled','Size','Color','Transparency','Thickness','Text','Data','ZIndex','Position','From','To','Visible'}) do
+            if pending[key] ~= nil then target[key] = pending[key] end
+        end
+        table.clear(pending)
+        return target
+    end
+    local function remove()
+        removed = true
+        if target then target:Remove(); target = nil end
+        table.clear(pending)
+    end
+    local function endpoints(_, from, to)
+        if target then target:SetEndpoints(from,to) else pending.From, pending.To = from, to end
+    end
+    return setmetatable({}, {
+        __index = function(_, key)
+            if key == 'Remove' or key == 'Destroy' then return remove end
+            if key == 'SetEndpoints' then return endpoints end
+            if key == 'Object' or key == 'TextBounds' then local draw = ensure(); return draw and draw[key] end
+            if target then return target[key] end
+            if pending[key] ~= nil then return pending[key] end
+            return defaults[key]
+        end,
+        __newindex = function(_, key, value)
+            if removed then return end
+            if target then target[key] = value
+            else
+                pending[key] = value
+                if key == 'Visible' and value == true then ensure() end
+            end
+        end,
+    })
+end
+
 local function getArmor(character)
     local body = character and character:FindFirstChild('BodyEffects')
     return body and body:FindFirstChild('Armor')
@@ -305,15 +347,8 @@ function utility.funcs.render(player, record)
     for _, kind in ipairs(barKinds) do
         draws[kind .. 'BarOutline'], draws[kind .. 'Bar'] = draw('Bar'), draw('Bar')
         draws[kind .. 'BarOutline'].ZIndex, draws[kind .. 'Bar'].ZIndex = 3, 4
-        local gradient = Instance.new('UIGradient')
-        gradient.Rotation, gradient.Parent = 90, draws[kind .. 'Bar'].Object
-        record.Gradients[kind] = gradient
     end
     draws.Tracer, draws.TracerOutline, draws.Image, draws.WeaponIcon, draws.CrewIcon = draw('Line'), draw('Line'), draw('Bar'), draw('Image'), draw('Image')
-    local gradient = Instance.new('UIGradient')
-    gradient.Rotation, gradient.Parent = 90, draws.Image.Object
-    gradient.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(1,0)})
-    record.ImageGradient = gradient
     draws.Tracer.ZIndex, draws.TracerOutline.ZIndex = 3, 2
     draws.Image.ZIndex, draws.WeaponIcon.ZIndex, draws.CrewIcon.ZIndex = 1, 5, 5
     draws.BoxOutline.Color, draws.BoxInline.Color, draws.HealthBarOutline.Color, draws.ArmorBarOutline.Color = black, black, black, black
@@ -964,8 +999,16 @@ function ESP:HasForceField(character)
     return value and value:IsA('BoolValue') and value.Value == true or false
 end
 function ESP:SetBarGradient(record, kind, first, last, horizontal, inverted, shift)
+    if not record.Drawings then return end
     local gradient = record.Gradients and record.Gradients[kind]
-    if not gradient then return end
+    if not gradient then
+        local bar = record.Drawings[kind .. 'Bar']
+        if not bar then return end
+        gradient = Instance.new('UIGradient')
+        gradient.Parent = bar.Object
+        record.Gradients = record.Gradients or {}
+        record.Gradients[kind] = gradient
+    end
     local colors = record.GradientColors or {}; record.GradientColors = colors
     local previous = colors[kind]
     if not previous then previous = {}; colors[kind] = previous end
@@ -1223,6 +1266,11 @@ function utility.funcs.update(player, record, delta, frame)
     end
     draws.Image.Visible = settings.Image.Enabled
     if settings.Image.Enabled then
+        if not record.ImageGradient then
+            record.ImageGradient = Instance.new('UIGradient')
+            record.ImageGradient.Rotation, record.ImageGradient.Parent = 90, draws.Image.Object
+            record.ImageGradient.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(1,0)})
+        end
         draws.Image.Position, draws.Image.Size, draws.Image.Color, draws.Image.Transparency = position, size, color or settings.Image.Color or white, 0.15 * opacity
         local gradientEnabled = settings.Image.Data == 'Gradient'
         if record.ImageGradientEnabled ~= gradientEnabled then record.ImageGradient.Enabled, record.ImageGradientEnabled = gradientEnabled, gradientEnabled end
@@ -1339,7 +1387,7 @@ connect(Players.PlayerRemoving,function(player)
     if cache[player] then destroy(cache[player]); cache[player] = nil end
     ESP.CrewNames[player], ESP.CrewIds[player] = nil, nil
 end,Players,'unnamed player removed')
-connect(RunService.RenderStepped,function(delta)
+local function renderFrame(delta)
     if not alive or not enabled then return end
     local frame = frameContext(delta)
     for player, record in pairs(cache) do
@@ -1349,10 +1397,17 @@ connect(RunService.RenderStepped,function(delta)
             if tick()-(record.ErrorAt or -math.huge)>5 then record.ErrorAt = tick(); warn('[Phowg] unnamed ESP: ' .. tostring(err)) end
         end
     end
-end,RunService,'unnamed render')
+end
+local environment = getgenv()
+environment.PhowgESPRenderSerial = (environment.PhowgESPRenderSerial or 0) + 1
+local renderName = 'PhowgESP:' .. tostring(environment.PhowgESPRenderSerial)
+local renderBound = false
+if RunService.BindToRenderStep then renderBound = pcall(function() RunService:BindToRenderStep(renderName,Enum.RenderPriority.Camera.Value + 1,renderFrame) end) end
+if not renderBound then connect(RunService.RenderStepped,renderFrame,RunService,'unnamed render') end
 ESP._Cleanup = function()
     if not alive then return end
     alive = false
+    if renderBound then RunService:UnbindFromRenderStep(renderName); renderBound = false end
     for _, connection in ipairs(connections) do connection:Disconnect() end
     for _, record in pairs(cache) do destroy(record) end
     table.clear(cache)
