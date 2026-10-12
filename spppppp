@@ -1,6 +1,6 @@
 local previous = getgenv().ESP
 if type(previous) == 'table' and type(previous._Cleanup) == 'function' then pcall(previous._Cleanup) end
-local ESP: {[string]: any} = {Backend = 'Unnamed', StartupRevision = 9, PhowgBarHookRevision = 1, SupportsSpatialBarGradient = true, NativeBarGradients = true, CrewNames = {}, CrewIds = {}, CrewIcons = {}, CrewCounts = {}}
+local ESP: {[string]: any} = {Backend = 'Unnamed', StartupRevision = 10, PhowgBarHookRevision = 1, SupportsSpatialBarGradient = true, NativeBarGradients = true, CrewNames = {}, CrewIds = {}, CrewIcons = {}, CrewCounts = {}}
 ESP.PhowgBarHookRevision = 1
 ESP.NativeLabelSpacing = true
 ESP.SupportsPlayerStats = true
@@ -1353,7 +1353,7 @@ function utility.funcs.update(player, record, delta, frame)
             record.NameBoth, record.NameDisplay = both, display
             record.NameText = both and (record.DisplayName .. ' (@' .. username .. ')') or display and record.DisplayName or username
         end
-        local tag = flagged and (record.LockFlagged == 1 and ' EXPLOITER (not sure)' or record.LockFlagged == 2 and ' EXPLOITER (suspected)' or ' EXPLOITER (flagged)') or ''
+        local tag = flagged and (record.LockFlagged == 1 and ' EXPLOITER (not sure)' or record.LockFlagged == 2 and ' EXPLOITER (suspected)' or record.LockFlagged == 3 and ' EXPLOITER (flagged)' or ' EXPLOITER (bannable)') or ''
         if record.TagBase ~= record.NameText or record.NameTag ~= tag then
             record.TagBase, record.NameTag, record.TaggedName = record.NameText, tag, record.NameText .. tag
         end
