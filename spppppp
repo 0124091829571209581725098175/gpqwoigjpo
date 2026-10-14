@@ -1,9 +1,10 @@
 local previous = getgenv().ESP
 if type(previous) == 'table' and type(previous._Cleanup) == 'function' then pcall(previous._Cleanup) end
-local ESP: {[string]: any} = {Backend = 'Unnamed', StartupRevision = 11, PhowgBarHookRevision = 1, SupportsSpatialBarGradient = true, NativeBarGradients = true, CrewNames = {}, CrewIds = {}, CrewIcons = {}, CrewCounts = {}}
+local ESP: {[string]: any} = {Backend = 'Unnamed', StartupRevision = 12, PhowgBarHookRevision = 1, SupportsSpatialBarGradient = true, NativeBarGradients = true, CrewNames = {}, CrewIds = {}, CrewIcons = {}, CrewCounts = {}}
 ESP.PhowgBarHookRevision = 1
 ESP.NativeLabelSpacing = true
 ESP.SupportsPlayerStats = true
+ESP.SupportsFlags = true
 ESP.SupportsCountryNames = true
 ESP.SupportsCountryIPv4 = true
 ESP.LazyDrawings = true
@@ -37,6 +38,7 @@ ESP.Settings = {
     DetectCheaters = {Enabled = false, RedName = true},
     Money = {Enabled = false, Color = Color3.new(1,1,1)},
     Device = {Enabled = false, Color = Color3.new(1,1,1)},
+    Flags = {Enabled = false, Types = {walking=true,running=true,attacking=true,shooting=true,masked=true,flung=true,flying=true}, Color = Color3.new(1,1,1)},
     Inventory = {Enabled = false, Color = Color3.new(1,1,1)},
     Accuracy = {Enabled = false, Mode = 'all time', Color = Color3.new(1,1,1)},
     Country = {Enabled = false, Color = Color3.new(1,1,1), SimulatedIP = false},
@@ -324,6 +326,7 @@ local function bind(record, character)
     record.HighlightState, record.ForceFieldState = nil, nil
     if record.ToolNameConnection then record.ToolNameConnection:Disconnect(); record.ToolNameConnection = nil end
     record.EquippedTool, record.ToolName, record.IconToolName, record.IconKey = nil, 'none', nil, nil
+    record.FlagState, record.FlagsText = nil, ''
     record.Character, record.Parts, record.LastHealth, record.LastArmor = character, {}, nil, nil
     local function refresh()
         record.Root = character and character:FindFirstChild('HumanoidRootPart')
@@ -374,7 +377,7 @@ function utility.funcs.render(player, record)
     record.Chams, record.ChamStates = record.Chams or {}, record.ChamStates or {}
     local draws = record.Drawings
     for _, name in ipairs({'Box','BoxOutline','BoxInline'}) do draws[name] = draw('Square'); draws[name].ZIndex = 3 end
-    for _, name in ipairs({'Name','Distance','ToolText','HealthText','WantedText','ForceFieldText','CrewText','CrewCount','AccuracyText','CountryText','MoneyText','DeviceText','InventoryText'}) do draws[name] = draw('Text'); draws[name].ZIndex = 5; draws[name].Center = name == 'Name' or name == 'Distance' or name == 'ToolText' or name == 'CrewText' or name == 'AccuracyText' or name == 'CountryText' or name == 'MoneyText' or name == 'DeviceText' or name == 'InventoryText' end
+    for _, name in ipairs({'Name','Distance','ToolText','HealthText','WantedText','ForceFieldText','CrewText','CrewCount','AccuracyText','CountryText','MoneyText','DeviceText','InventoryText','FlagsText'}) do draws[name] = draw('Text'); draws[name].ZIndex = 5; draws[name].Center = name == 'Name' or name == 'Distance' or name == 'ToolText' or name == 'CrewText' or name == 'AccuracyText' or name == 'CountryText' or name == 'MoneyText' or name == 'DeviceText' or name == 'InventoryText' end
     for _, kind in ipairs(barKinds) do
         draws[kind .. 'BarOutline'], draws[kind .. 'Bar'] = draw('Bar'), draw('Bar')
         draws[kind .. 'BarOutline'].ZIndex, draws[kind .. 'Bar'].ZIndex = 3, 4
@@ -1322,6 +1325,38 @@ function ESP:WatchWeaponIcons(callback)
 end
 ESP.PhowgWeaponIconAssets = true
 
+local function updateFlags(record, position, now)
+    if not ESP.Settings.Flags.Enabled then record.FlagState, record.FlagsText = nil, ''; return end
+    local state = record.FlagState
+    if not state then state = {Position = position, At = now, Speed = 0, Vertical = 0}; record.FlagState = state end
+    local elapsed = now - state.At
+    if elapsed < 0.1 and record.FlagsText then return end
+    local delta = position - state.Position
+    if elapsed > 0 and elapsed <= 0.5 then
+        state.Speed, state.Vertical = Vector3.new(delta.X, 0, delta.Z).Magnitude / elapsed, delta.Y / elapsed
+    else state.Speed, state.Vertical = 0, 0 end
+    state.Position, state.At = position, now
+    local character, humanoid = record.Character, record.Humanoid
+    local body = character:FindFirstChild('BodyEffects')
+    local function active(name)
+        local value = body and body:FindFirstChild(name)
+        return value and value:IsA('BoolValue') and value.Value == true or false
+    end
+    local air = humanoid.FloorMaterial == Enum.Material.Air
+    if air then state.AirAt = state.AirAt or now else state.AirAt, state.HoverAt = nil, nil end
+    if air and math.abs(state.Vertical) < 6 then state.HoverAt = state.HoverAt or now else state.HoverAt = nil end
+    local running = state.Speed > math.max(17, (humanoid.WalkSpeed or 16) * 0.9)
+    local flung = active('Flung') or (humanoid.PlatformStand and state.Speed > 100) or state.Speed > 300 or math.abs(state.Vertical) > 300
+    local flying = active('Flying') or air and state.AirAt and now - state.AirAt > 0.8
+        and state.HoverAt and now - state.HoverAt > 0.5 or false
+    local flags = {walking=not air and state.Speed > 1.5 and not running, running=not air and running, attacking=active('Attacking'),
+        shooting=active('GunFiring'), masked=character:FindFirstChild('In-gameMask') ~= nil, flung=flung, flying=flying}
+    local selected, text = ESP.Settings.Flags.Types, {}
+    for _, name in ipairs({'walking','running','attacking','shooting','masked','flung','flying'}) do
+        if selected[name] and flags[name] then text[#text + 1] = string.upper(name) end
+    end
+    record.FlagsText = table.concat(text, string.char(10))
+end
 local function frameContext(delta)
     local settings, camera, environment = ESP.Settings, Workspace.CurrentCamera, getgenv()
     local clientCFrame
@@ -1340,7 +1375,7 @@ local function frameContext(delta)
         elseif selected == 'Below' then origin = Vector2.new(viewport.X/2,viewport.Y)
         else origin = Vector2.new(viewport.X/2,0) end
     end
-    return {Profile = settings.Performance.Profile == true, ProjectionMs = 0, LabelsIconsMs = 0, EffectsMs = 0, Visible = 0, Tracked = 0, Camera = camera, ClientCFrame = clientCFrame, ClientPosition = clientPosition, TracerOrigin = origin, Wanted = environment.PhowgGetWanted, Now = tick(), Delta = delta or 1/60, SmoothAlpha = 1-exp(-(delta or 1/60)*3), TwoDimensional = settings.Money.Enabled or settings.Device.Enabled or settings.Inventory.Enabled or settings.DetectCheaters.Enabled or settings.Accuracy.Enabled or settings.Country.Enabled or settings.Box.Enabled or settings.Name.Enabled or settings.Crew.Enabled or settings.Distance.Enabled or settings.ToolText.Enabled or settings.WeaponIcon.Enabled or settings.HealthText.Enabled or settings.Wanted.Enabled or settings.ForceField.Enabled or settings.Tracer.Enabled or settings.Image.Enabled or settings.Bars.Health.Enabled or settings.Bars.Armor.Enabled}
+    return {Profile = settings.Performance.Profile == true, ProjectionMs = 0, LabelsIconsMs = 0, EffectsMs = 0, Visible = 0, Tracked = 0, Camera = camera, ClientCFrame = clientCFrame, ClientPosition = clientPosition, TracerOrigin = origin, Wanted = environment.PhowgGetWanted, Now = tick(), Delta = delta or 1/60, SmoothAlpha = 1-exp(-(delta or 1/60)*3), TwoDimensional = settings.Flags.Enabled or settings.Money.Enabled or settings.Device.Enabled or settings.Inventory.Enabled or settings.DetectCheaters.Enabled or settings.Accuracy.Enabled or settings.Country.Enabled or settings.Box.Enabled or settings.Name.Enabled or settings.Crew.Enabled or settings.Distance.Enabled or settings.ToolText.Enabled or settings.WeaponIcon.Enabled or settings.HealthText.Enabled or settings.Wanted.Enabled or settings.ForceField.Enabled or settings.Tracer.Enabled or settings.Image.Enabled or settings.Bars.Health.Enabled or settings.Bars.Armor.Enabled}
 end
 function utility.funcs.update(player, record, delta, frame)
     record = record or cache[player]
@@ -1440,6 +1475,7 @@ function utility.funcs.update(player, record, delta, frame)
         if record.ImageGradientEnabled ~= gradientEnabled then record.ImageGradient.Enabled, record.ImageGradientEnabled = gradientEnabled, gradientEnabled end
     end
     profileStage(frame,'EffectsMs',effectsStarted)
+    updateFlags(record, rootPosition, frame.Now)
     local labelsStarted = frame.Profile and clock() or nil
     local flagged = settings.DetectCheaters.Enabled and record.LockFlagged >= 1
     if settings.Name.Enabled or flagged then
@@ -1552,6 +1588,10 @@ function utility.funcs.update(player, record, delta, frame)
     if record.WantedTextValue ~= wantedValue then record.WantedTextValue, record.WantedText = wantedValue, 'WANTED / ' .. tostring(wantedValue) end
     if settings.Wanted.Enabled and not hideSecondary and wanted > 0 then label(draws.WantedText,true,record.WantedText,position + Vector2.new(size.X+rightSpace,0),color or settings.Wanted.Color,settings.Misc.SmallSize) else draws.WantedText.Visible = false end
     if settings.ForceField.Enabled and not hideSecondary and protected then label(draws.ForceFieldText,true,'FORCEFIELD',position + Vector2.new(size.X+rightSpace,14),settings.ForceField.Color,settings.Misc.SmallSize) else draws.ForceFieldText.Visible = false end
+    local flagTop = settings.ForceField.Enabled and protected and 28 or settings.Wanted.Enabled and wanted > 0 and 14 or 0
+    if settings.Flags.Enabled and not hideSecondary and record.FlagsText ~= '' then
+        label(draws.FlagsText,true,record.FlagsText,position + Vector2.new(size.X+rightSpace,flagTop),settings.Flags.Color,settings.Misc.SmallSize)
+    else draws.FlagsText.Visible = false end
     profileStage(frame,'LabelsIconsMs',labelsStarted)
     effectsStarted = frame.Profile and clock() or nil
     local tracerEnabled = settings.Tracer.Enabled and not hideEffects
@@ -1575,11 +1615,12 @@ function ESP:Configure(config)
     end
     local previousProfile = self.Settings.Performance.Profile
     merge(self.Settings,config)
+    if config.Flags and type(config.Flags.Types) == 'table' then self.Settings.Flags.Types = table.clone(config.Flags.Types) end
     self.Settings.DistanceDetail.Distance = math.max(1,tonumber(self.Settings.DistanceDetail.Distance) or 300)
     self.Performance.Enabled = self.Settings.Performance.Profile == true
     if previousProfile ~= self.Settings.Performance.Profile then self:ResetPerformance() end
     enabled = false
-    for _, key in ipairs({'Box','Name','Crew','Distance','Chams','Highlight','ToolText','WeaponIcon','HealthText','Wanted','ForceField','Tracer','Image','DetectCheaters','Accuracy','Country','Money','Device','Inventory'}) do if self.Settings[key].Enabled then enabled = true; break end end
+    for _, key in ipairs({'Box','Name','Crew','Distance','Chams','Highlight','ToolText','WeaponIcon','HealthText','Wanted','ForceField','Tracer','Image','DetectCheaters','Accuracy','Country','Money','Device','Inventory','Flags'}) do if self.Settings[key].Enabled then enabled = true; break end end
     enabled = enabled or self.Settings.Bars.Health.Enabled or self.Settings.Bars.Armor.Enabled
     revision = revision + 1
     for _, record in pairs(cache) do
