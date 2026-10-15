@@ -1,6 +1,6 @@
 local previous = getgenv().ESP
 if type(previous) == 'table' and type(previous._Cleanup) == 'function' then pcall(previous._Cleanup) end
-local ESP: {[string]: any} = {Backend = 'Unnamed', StartupRevision = 13, PhowgBarHookRevision = 1, SupportsSpatialBarGradient = true, NativeBarGradients = true, CrewNames = {}, CrewIds = {}, CrewIcons = {}, CrewCounts = {}}
+local ESP: {[string]: any} = {Backend = 'Unnamed', StartupRevision = 14, PhowgBarHookRevision = 1, SupportsSpatialBarGradient = true, NativeBarGradients = true, CrewNames = {}, CrewIds = {}, CrewIcons = {}, CrewCounts = {}}
 ESP.PhowgBarHookRevision = 1
 ESP.NativeLabelSpacing = true
 ESP.SupportsPlayerStats = true
@@ -58,6 +58,8 @@ ESP.Settings = {
     },
     Name = {
         Enabled = false,
+        DisableMasks = false,
+        HideNormalNames = false,
         Use_Both_Name = true,
         Use_User_Name = false,
         Use_Display_Name = false,
@@ -327,7 +329,32 @@ local function getArmor(character)
     local body = character and character:FindFirstChild('BodyEffects')
     return body and body:FindFirstChild('Armor')
 end
+local function restoreNormalName(record)
+    local state = record.NormalNameState
+    if not state then return end
+    record.NormalNameState = nil
+    if state.Connection then state.Connection:Disconnect() end
+    if state.Humanoid.Parent and state.Humanoid.NameDisplayDistance == 0 then state.Humanoid.NameDisplayDistance = state.Distance end
+end
+local function syncNormalName(record)
+    local humanoid = record.Humanoid
+    local wanted = ESP.Settings.Name.Enabled and ESP.Settings.Name.HideNormalNames and record.Player ~= LocalPlayer
+        and humanoid and humanoid.Parent
+    local state = record.NormalNameState
+    if state and (not wanted or state.Humanoid ~= humanoid) then restoreNormalName(record); state = nil end
+    if not wanted or state then return end
+    state = {Humanoid=humanoid,Distance=humanoid.NameDisplayDistance}
+    record.NormalNameState = state
+    state.Connection = connect(humanoid:GetPropertyChangedSignal('NameDisplayDistance'),function()
+        if record.NormalNameState == state and humanoid.NameDisplayDistance ~= 0 then
+            state.Distance = humanoid.NameDisplayDistance
+            humanoid.NameDisplayDistance = 0
+        end
+    end,record.Player,'esp normal name distance',true)
+    humanoid.NameDisplayDistance = 0
+end
 local function bind(record, character)
+    restoreNormalName(record)
     for _, connection in ipairs(record.CharacterConnections or {}) do connection:Disconnect() end
     record.CharacterConnections = {}
     for _, adornment in pairs(record.Chams or {}) do adornment:Destroy() end
@@ -345,6 +372,8 @@ local function bind(record, character)
         record.Root = character and character:FindFirstChild('HumanoidRootPart')
         record.Anchor = character and (character:FindFirstChild('UpperTorso') or character:FindFirstChild('Torso') or record.Root)
         record.Humanoid = character and character:FindFirstChildOfClass('Humanoid')
+        record.Mask = character and character:FindFirstChild('In-gameMask')
+        syncNormalName(record)
         record.ArmorValue = getArmor(character)
         local tool = character and character:FindFirstChildOfClass('Tool')
         if record.EquippedTool ~= tool then
@@ -1075,6 +1104,7 @@ local function updateInventory(record)
 end
 
 local function destroy(record)
+    restoreNormalName(record)
     stopInventory(record)
     stopStats(record)
     for _, connection in ipairs(record.IdentityConnections or {}) do connection:Disconnect() end
@@ -1506,9 +1536,10 @@ function utility.funcs.update(player, record, delta, frame)
     local flagged = settings.DetectCheaters.Enabled and record.LockFlagged >= 1
     if settings.Name.Enabled or flagged then
         local both, display, username = settings.Name.Use_Both_Name, settings.Name.Use_Display_Name, record.PlayerName
-        if record.NameBoth ~= both or record.NameDisplay ~= display or not record.NameText then
-            record.NameBoth, record.NameDisplay = both, display
-            record.NameText = both and (record.DisplayName .. ' (@' .. username .. ')') or display and record.DisplayName or username
+        local masked = record.Mask ~= nil and record.Mask.Parent == character and not settings.Name.DisableMasks
+        if record.NameBoth ~= both or record.NameDisplay ~= display or record.NameMasked ~= masked or not record.NameText then
+            record.NameBoth, record.NameDisplay, record.NameMasked = both, display, masked
+            record.NameText = masked and "Masked" or both and (record.DisplayName .. ' (@' .. username .. ')') or display and record.DisplayName or username
         end
         local tag = flagged and (record.LockFlagged == 1 and ' [E] (not sure)' or record.LockFlagged == 2 and ' [E] (suspected)' or record.LockFlagged == 3 and ' [E] (flagged)' or ' [E] (bannable)') or ''
         if record.TagBase ~= record.NameText or record.NameTag ~= tag then
@@ -1651,6 +1682,7 @@ function ESP:Configure(config)
     revision = revision + 1
     for _, record in pairs(cache) do
         subscribe(record); subscribeStats(record); subscribeIdentity(record); updateInventory(record)
+        syncNormalName(record)
         local tool = record.EquippedTool
         local needsTool = tool and (self.Settings.ToolText.Enabled or self.Settings.WeaponIcon.Enabled)
         if needsTool and not record.ToolNameConnection then
