@@ -1,6 +1,6 @@
 local previous = getgenv().ESP
 if type(previous) == 'table' and type(previous._Cleanup) == 'function' then pcall(previous._Cleanup) end
-local ESP: {[string]: any} = {Backend = 'Unnamed', StartupRevision = 14, PhowgBarHookRevision = 1, SupportsSpatialBarGradient = true, NativeBarGradients = true, CrewNames = {}, CrewIds = {}, CrewIcons = {}, CrewCounts = {}}
+local ESP: {[string]: any} = {Backend = 'Unnamed', StartupRevision = 15, PhowgBarHookRevision = 1, SupportsSpatialBarGradient = true, NativeBarGradients = true, CrewNames = {}, CrewIds = {}, CrewIcons = {}, CrewCounts = {}}
 ESP.PhowgBarHookRevision = 1
 ESP.NativeLabelSpacing = true
 ESP.SupportsPlayerStats = true
@@ -1382,7 +1382,10 @@ local function updateFlags(record, position, now)
     local elapsed = now - state.At
     if elapsed < 0.1 and record.FlagsText then return end
     local delta = position - state.Position
-    if elapsed > 0 and elapsed <= 0.5 then
+    local sampledHumanoid=record.Humanoid
+    local walkSpeed=tonumber(sampledHumanoid.WalkSpeed) or 16
+    local discontinuity=delta.Magnitude>math.max(48,math.max(16,walkSpeed)*elapsed*3)
+    if elapsed > 0 and elapsed <= 0.5 and not discontinuity then
         state.Speed, state.Vertical = Vector3.new(delta.X, 0, delta.Z).Magnitude / elapsed, delta.Y / elapsed
     else state.Speed, state.Vertical = 0, 0 end
     state.Position, state.At = position, now
@@ -1396,8 +1399,10 @@ local function updateFlags(record, position, now)
     if air then state.AirAt = state.AirAt or now else state.AirAt, state.HoverAt = nil, nil end
     if air and math.abs(state.Vertical) < 6 then state.HoverAt = state.HoverAt or now else state.HoverAt = nil end
     local speed = tonumber(humanoid.WalkSpeed) or 16
-    local moving = state.Speed > 1.5
-    local flung = active('Flung') or humanoid.PlatformStand == true and (state.Speed > 100 or math.abs(state.Vertical) > 100)
+    local vehicles=Workspace:FindFirstChild('Vehicles')
+    local seated=humanoid.Sit==true or humanoid.SeatPart~=nil or vehicles and vehicles:FindFirstChild(record.PlayerName)~=nil
+    local moving = not seated and state.Speed > 1.5
+    local flung = active('Flung') or not seated and not discontinuity and humanoid.PlatformStand == true and (state.Speed > 100 or math.abs(state.Vertical) > 100)
     local flying = active('Flying')
     local flags = {walking=not air and moving and speed<=16, running=not air and moving and speed>16 and speed<=50,
         macroing=not air and moving and speed>50, attacking=active('Attacking'), shooting=active('GunFiring'),
