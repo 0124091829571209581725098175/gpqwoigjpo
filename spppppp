@@ -1,6 +1,6 @@
 local previous = getgenv().ESP
 if type(previous) == 'table' and type(previous._Cleanup) == 'function' then pcall(previous._Cleanup) end
-local ESP: {[string]: any} = {Backend = 'Unnamed', StartupRevision = 16, PhowgBarHookRevision = 1, SupportsSpatialBarGradient = true, NativeBarGradients = true, CrewNames = {}, CrewIds = {}, CrewIcons = {}, CrewCounts = {}}
+local ESP: {[string]: any} = {Backend = 'Unnamed', StartupRevision = 17, PhowgBarHookRevision = 1, SupportsSpatialBarGradient = true, NativeBarGradients = true, CrewNames = {}, CrewIds = {}, CrewIcons = {}, CrewCounts = {}}
 ESP.PhowgBarHookRevision = 1
 ESP.NativeLabelSpacing = true
 ESP.SupportsPlayerStats = true
@@ -1412,9 +1412,15 @@ local function updateFlags(record, position, now)
     local flying = active('Flying')
     local flags = {walking=not air and moving and speed<=16, running=not air and moving and speed>16 and speed<=50,
         macroing=not air and moving and speed>50, attacking=active('Attacking'), shooting=active('GunFiring'),
-        masked=character:FindFirstChild('In-gameMask') ~= nil, flung=flung, flying=flying}
+        masked=character:FindFirstChild('In-gameMask') ~= nil, flung=flung, flying=flying,
+        infected=record.Player:GetAttribute('Infected') == true or character:GetAttribute('Infected') == true,
+        reloading=active('Reload') or active('Reloading'), knocked=active('K.O') or active('KO') or active('Dead'),
+        grabbed=character:FindFirstChild('GRABBING_CONSTRAINT') ~= nil,
+        protected=character:FindFirstChildOfClass('ForceField') ~= nil,
+        ['auto shoot']=record.Player:GetAttribute('AutoShoot') == true,
+        ['slide enabled']=record.Player:GetAttribute('Slide') == true}
     local selected, text = ESP.Settings.Flags.Types, {}
-    for _, name in ipairs({'walking','running','macroing','attacking','shooting','masked','flung','flying'}) do
+    for _, name in ipairs({'walking','running','macroing','attacking','shooting','masked','flung','flying','infected','reloading','knocked','grabbed','protected','auto shoot','slide enabled'}) do
         if selected[name] and flags[name] then text[#text + 1] = string.upper(name) end
     end
     record.FlagsText = table.concat(text, string.char(10))
