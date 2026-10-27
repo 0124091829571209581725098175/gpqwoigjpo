@@ -1,6 +1,6 @@
 local previous = getgenv().ESP
 if type(previous) == 'table' and type(previous._Cleanup) == 'function' then pcall(previous._Cleanup) end
-local ESP: {[string]: any} = {Backend = 'Unnamed', StartupRevision = 17, PhowgBarHookRevision = 1, SupportsSpatialBarGradient = true, NativeBarGradients = true, CrewNames = {}, CrewIds = {}, CrewIcons = {}, CrewCounts = {}}
+local ESP: {[string]: any} = {Backend = 'Unnamed', StartupRevision = 18, PhowgBarHookRevision = 1, SupportsSpatialBarGradient = true, NativeBarGradients = true, CrewNames = {}, CrewIds = {}, CrewIcons = {}, CrewCounts = {}}
 ESP.PhowgBarHookRevision = 1
 ESP.NativeLabelSpacing = true
 ESP.SupportsPlayerStats = true
@@ -420,7 +420,7 @@ function utility.funcs.render(player, record)
     local draws = record.Drawings
     for _, name in ipairs({'Box','BoxOutline','BoxInline'}) do draws[name] = draw('Square'); draws[name].ZIndex = 3 end
     draws.BoxGlow = draw('Square'); draws.BoxGlow.ZIndex = 2
-    for _, name in ipairs({'Name','Distance','ToolText','HealthText','WantedText','ForceFieldText','CrewText','CrewCount','AccuracyText','CountryText','MoneyText','DeviceText','InventoryText','FlagsText'}) do draws[name] = draw('Text'); draws[name].ZIndex = 5; draws[name].Center = name == 'Name' or name == 'Distance' or name == 'ToolText' or name == 'CrewText' or name == 'AccuracyText' or name == 'CountryText' or name == 'MoneyText' or name == 'DeviceText' or name == 'InventoryText' end
+    for _, name in ipairs({'Name','Distance','ToolText','HealthText','WantedText','ForceFieldText','CrewText','CrewCount','AccuracyText','CountryText','MoneyText','DeviceText','InventoryText','FlagsText'}) do draws[name] = draw('Text'); draws[name].ZIndex = 5; draws[name].Center = name == 'Name' or name == 'Distance' or name == 'ToolText' or name == 'CrewText' or name == 'CountryText' or name == 'MoneyText' or name == 'DeviceText' or name == 'InventoryText' end
     for _, kind in ipairs(barKinds) do
         draws[kind .. 'BarOutline'], draws[kind .. 'Bar'] = draw('Bar'), draw('Bar')
         draws[kind .. 'BarOutline'].ZIndex, draws[kind .. 'Bar'].ZIndex = 3, 4
@@ -958,7 +958,7 @@ local function refreshStats(record, changedKey)
     if not changedKey or changedKey:sub(1,3)=='Aim' or changedKey=='ShotLand' or changedKey=='ShotTotal' then
         local function accuracy(hits,shots)
             hits,shots=numeric(hits),numeric(shots)
-            return hits and shots and shots>0 and string.format('accuracy: %.1f%%',clamp(hits/shots*100,0,100)) or 'accuracy: N/A'
+            return hits and shots and shots>0 and string.format('A: %%%d',math.round(clamp(hits/shots*100,0,100))) or 'A: N/A'
         end
         record.AccuracyAllTime=accuracy(values.AimLandAllTime,values.AimShotsAllTime)
         record.AccuracySession=accuracy(values.ShotLand,values.ShotTotal)
@@ -1582,11 +1582,6 @@ function utility.funcs.update(player, record, delta, frame)
         below = below + math.max(14, settings.Misc.SmallSize + 2)
     else draws.Distance.Visible = false end
     local lineHeight = math.max(10, settings.Misc.SmallSize + (settings.Misc.LabelGap or 1))
-    if settings.Accuracy.Enabled and not hideSecondary then
-        local text = (settings.Accuracy.Mode == 'this session' or settings.Accuracy.Mode == 'this server') and record.AccuracySession or record.AccuracyAllTime
-        label(draws.AccuracyText,true,text or 'accuracy: N/A',position + Vector2.new(size.X/2,below),settings.Accuracy.Color,settings.Misc.SmallSize)
-        below += lineHeight
-    else draws.AccuracyText.Visible = false end
     if settings.Country.Enabled and not hideSecondary then
         label(draws.CountryText,true,(settings.Country.SimulatedIP and record.CountryIPText or record.CountryText) or 'Unknown',position + Vector2.new(size.X/2,below),settings.Country.Color,settings.Misc.SmallSize)
         below += lineHeight
@@ -1656,15 +1651,26 @@ function utility.funcs.update(player, record, delta, frame)
     local healthValue = floor(health)
     if record.HealthTextValue ~= healthValue then record.HealthTextValue, record.HealthText = healthValue, tostring(healthValue) end
     if settings.HealthText.Enabled and (not settings.HealthText.HideFullHealth or health < maxHealth) then label(draws.HealthText,true,record.HealthText,position + (spacing.HealthText or defaultHealthTextOffset),color or settings.HealthText.Color,settings.Misc.SmallSize) else draws.HealthText.Visible = false end
+    local rightTop, rightLineHeight = 0, math.max(14,lineHeight)
+    if settings.Accuracy.Enabled and not hideSecondary then
+        local text = (settings.Accuracy.Mode == 'this session' or settings.Accuracy.Mode == 'this server') and record.AccuracySession or record.AccuracyAllTime
+        label(draws.AccuracyText,true,text or 'A: N/A',position + Vector2.new(size.X+rightSpace,rightTop),settings.Accuracy.Color,settings.Misc.SmallSize)
+        rightTop += rightLineHeight
+    else draws.AccuracyText.Visible = false end
     local wanted = 0
     if settings.Wanted.Enabled and not hideSecondary and frame.Wanted then local ok, value = pcall(frame.Wanted,player); if ok then wanted = tonumber(value) or 0 end end
     local wantedValue = floor(wanted)
     if record.WantedTextValue ~= wantedValue then record.WantedTextValue, record.WantedText = wantedValue, 'WANTED / ' .. tostring(wantedValue) end
-    if settings.Wanted.Enabled and not hideSecondary and wanted > 0 then label(draws.WantedText,true,record.WantedText,position + Vector2.new(size.X+rightSpace,0),color or settings.Wanted.Color,settings.Misc.SmallSize) else draws.WantedText.Visible = false end
-    if settings.ForceField.Enabled and not hideSecondary and protected then label(draws.ForceFieldText,true,'FORCEFIELD',position + Vector2.new(size.X+rightSpace,14),settings.ForceField.Color,settings.Misc.SmallSize) else draws.ForceFieldText.Visible = false end
-    local flagTop = settings.ForceField.Enabled and protected and 28 or settings.Wanted.Enabled and wanted > 0 and 14 or 0
+    if settings.Wanted.Enabled and not hideSecondary and wanted > 0 then
+        label(draws.WantedText,true,record.WantedText,position + Vector2.new(size.X+rightSpace,rightTop),color or settings.Wanted.Color,settings.Misc.SmallSize)
+        rightTop += rightLineHeight
+    else draws.WantedText.Visible = false end
+    if settings.ForceField.Enabled and not hideSecondary and protected then
+        label(draws.ForceFieldText,true,'FORCEFIELD',position + Vector2.new(size.X+rightSpace,rightTop),settings.ForceField.Color,settings.Misc.SmallSize)
+        rightTop += rightLineHeight
+    else draws.ForceFieldText.Visible = false end
     if settings.Flags.Enabled and not hideSecondary and record.FlagsText ~= '' then
-        label(draws.FlagsText,true,record.FlagsText,position + Vector2.new(size.X+rightSpace,flagTop),settings.Flags.Color,settings.Misc.SmallSize)
+        label(draws.FlagsText,true,record.FlagsText,position + Vector2.new(size.X+rightSpace,rightTop),settings.Flags.Color,settings.Misc.SmallSize)
     else draws.FlagsText.Visible = false end
     profileStage(frame,'LabelsIconsMs',labelsStarted)
     effectsStarted = frame.Profile and clock() or nil
